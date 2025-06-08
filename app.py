@@ -1,94 +1,83 @@
-# ===================================================================
-# STREAMLIT VERSION - CLUSTERING MONKEYPOX
-# ===================================================================
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
-from sklearn.decomposition import PCA
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 
-st.set_page_config(page_title="Analisis Clustering Monkeypox", layout="wide")
-st.title("🔬 Analisis Clustering Monkeypox")
+# Konfigurasi Streamlit
+st.set_page_config(page_title="Clustering Monkeypox", layout="wide")
+st.title("🧬 Analisis Clustering pada Data Monkeypox")
 
-# Memuat data
-st.header("📊 Langkah 1: Memuat Data")
-try:
-    df = pd.read_csv('MonkeyPox.csv')
-    st.success(f"Data berhasil dimuat: {df.shape[0]} baris, {df.shape[1]} kolom")
-except FileNotFoundError:
-    st.error("File 'MonkeyPox.csv' tidak ditemukan. Harap unggah file tersebut.")
-    st.stop()
+# Upload file CSV
+uploaded_file = st.file_uploader("📂 Upload dataset MonkeyPox.csv", type=["csv"])
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
+    st.success("✅ Data berhasil dimuat!")
 
-st.subheader("Distribusi Kasus Monkeypox")
-st.write(df['MonkeyPox'].value_counts())
-st.write("Data Hilang:", df.isnull().sum().sum())
+    # Tampilkan ringkasan data
+    st.subheader("👀 Sekilas tentang data")
+    st.dataframe(df.head())
 
-# Pra-pemrosesan
-st.header("🛠️ Langkah 2: Menyiapkan Data")
-df_fitur = df.drop(columns=["Patient_ID", "MonkeyPox"])
-kolom_kategori = df_fitur.select_dtypes(include=['object']).columns
-if len(kolom_kategori) > 0:
-    df_encoded = pd.get_dummies(df_fitur, columns=kolom_kategori, drop_first=True)
+    # Preprocessing
+    st.subheader("🔍 Preprocessing")
+    X = df.select_dtypes(include=[np.number])
+    st.write(f"📐 Menggunakan {X.shape[1]} fitur numerik untuk clustering.")
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    # PCA
+    st.subheader("📊 Reduksi Dimensi dengan PCA")
+    pca = PCA(n_components=2)
+    X_pca = pca.fit_transform(X_scaled)
+    st.write(f"✨ Variansi yang dijelaskan oleh 2 komponen: {np.sum(pca.explained_variance_ratio_):.2%}")
+    df_pca = pd.DataFrame(X_pca, columns=["PC1", "PC2"])
+
+    # Pilih jumlah klaster
+    k = st.slider("🔢 Pilih jumlah klaster (KMeans)", min_value=2, max_value=10, value=3)
+
+    # KMeans Clustering
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    cluster_labels = kmeans.fit_predict(X_pca)
+    df_pca["Cluster"] = cluster_labels
+
+    # Visualisasi hasil clustering
+    st.subheader("🌀 Visualisasi Clustering")
+    fig, ax = plt.subplots()
+    sns.scatterplot(data=df_pca, x="PC1", y="PC2", hue="Cluster", palette="husl", s=70, ax=ax)
+    ax.set_title(f"KMeans Clustering (k={k})")
+    st.pyplot(fig)
+
+    # Silhouette Score
+    score = silhouette_score(X_pca, cluster_labels)
+    st.info(f"📈 Silhouette Score untuk k={k}: **{score:.4f}**")
+
+    # Elbow Method
+    st.subheader("📉 Metode Elbow")
+    distortions = []
+    K = range(2, 11)
+    for i in K:
+        km = KMeans(n_clusters=i, random_state=42)
+        km.fit(X_pca)
+        distortions.append(km.inertia_)
+    fig2, ax2 = plt.subplots()
+    ax2.plot(K, distortions, 'bx-')
+    ax2.set_xlabel('Jumlah Klaster')
+    ax2.set_ylabel('Inertia')
+    ax2.set_title('Metode Elbow')
+    st.pyplot(fig2)
+
+    # Dendrogram
+    st.subheader("🌳 Dendrogram (Hierarchical Clustering)")
+    linked = linkage(X_scaled, 'ward')
+    fig3, ax3 = plt.subplots(figsize=(10, 4))
+    dendrogram(linked, truncate_mode='level', p=5, ax=ax3)
+    st.pyplot(fig3)
+
 else:
-    df_encoded = df_fitur.copy()
-
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(df_encoded)
-
-# Mencari jumlah cluster terbaik
-st.header("🎯 Langkah 3: Menentukan Jumlah Cluster Terbaik")
-jumlah_k = range(2, 8)
-silhouette_scores = []
-for k in jumlah_k:
-    kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-    labels = kmeans.fit_predict(X_scaled)
-    sil_score = silhouette_score(X_scaled, labels)
-    silhouette_scores.append(sil_score)
-
-k_terbaik = jumlah_k[np.argmax(silhouette_scores)]
-st.write(f"Jumlah cluster terbaik: {k_terbaik} (Silhouette Score: {max(silhouette_scores):.3f})")
-
-fig, ax = plt.subplots(1, 2, figsize=(10, 4))
-ax[0].plot(jumlah_k, silhouette_scores, marker='o')
-ax[0].set_title('Silhouette Score')
-ax[0].set_xlabel('Jumlah Cluster')
-ax[1].bar(range(len(df_encoded.columns)), np.std(X_scaled, axis=0))
-ax[1].set_title('Standar Deviasi Fitur')
-st.pyplot(fig)
-
-# Clustering Final
-st.header("🎨 Langkah 4: Clustering Akhir dan Visualisasi")
-kmeans_final = KMeans(n_clusters=k_terbaik, random_state=42, n_init=10)
-df['Cluster'] = kmeans_final.fit_predict(X_scaled)
-
-# PCA untuk visualisasi
-pca = PCA(n_components=2)
-X_pca = pca.fit_transform(X_scaled)
-fig2, ax2 = plt.subplots()
-scatter = ax2.scatter(X_pca[:, 0], X_pca[:, 1], c=df['Cluster'], cmap='viridis', alpha=0.7)
-plt.colorbar(scatter, ax=ax2)
-ax2.set_title('Visualisasi Clustering dengan PCA')
-ax2.set_xlabel('Komponen 1')
-ax2.set_ylabel('Komponen 2')
-st.pyplot(fig2)
-
-# Evaluasi cluster
-st.header("📊 Langkah 5: Evaluasi Cluster")
-silhouette_final = silhouette_score(X_scaled, df['Cluster'])
-st.write(f"Silhouette Score akhir: {silhouette_final:.3f}")
-st.dataframe(pd.crosstab(df['Cluster'], df['MonkeyPox']))
-
-# Visualisasi tambahan
-st.header("📈 Langkah 6: Visualisasi Tambahan")
-fig3, ax3 = plt.subplots()
-sns.countplot(data=df, x='Cluster', hue='MonkeyPox', ax=ax3)
-ax3.set_title('Distribusi Monkeypox per Cluster')
-st.pyplot(fig3)
-
-st.success("Analisis selesai. Gunakan hasil clustering untuk insight lebih lanjut!")
+    st.warning("👈 Silakan upload file `MonkeyPox.csv` terlebih dahulu.")
