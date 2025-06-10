@@ -3,431 +3,219 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import warnings
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+import warnings
+warnings.filterwarnings('ignore')
 
-warnings.filterwarnings("ignore")
-
-# Konfigurasi halaman
+# --- Konfigurasi Halaman Streamlit ---
 st.set_page_config(
-    page_title="🔬 MonkeyPox Clustering Analysis",
+    page_title="Analisis Clustering Monkeypox",
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# CSS untuk styling
-st.markdown("""
-<style>
-    .main-header {
-        text-align: center;
-        padding: 2rem 0;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border-radius: 10px;
-        margin-bottom: 2rem;
-    }
-    .metric-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        text-align: center;
-    }
-    .step-header {
-        background: linear-gradient(90deg, #11998e 0%, #38ef7d 100%);
-        color: white;
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 1rem 0;
-    }
-    .info-box {
-        background: #f0f2f6;
-        padding: 1rem;
-        border-radius: 8px;
-        border-left: 4px solid #667eea;
-        margin: 1rem 0;
-    }
-</style>
-""", unsafe_allow_html=True)
+st.title("🔬 Analisis Clustering Monkeypox")
+st.markdown("--- ")
 
-# Dataset sample (karena tidak ada file CSV yang diberikan, saya buat sample dataset)
+# --- Fungsi untuk memuat data --- 
 @st.cache_data
-def load_sample_data():
-    """Membuat sample dataset MonkeyPox untuk demo"""
-    np.random.seed(42)
-    n_samples = 500
-    
-    # Generate sample data
-    data = {
-        'Patient_ID': [f'P{i:04d}' for i in range(1, n_samples + 1)],
-        'Systemic Illness': np.random.choice(['Yes', 'No', 'Unknown'], n_samples, p=[0.3, 0.6, 0.1]),
-        'Rectal Pain': np.random.choice([0, 1], n_samples, p=[0.7, 0.3]),
-        'Sore Throat': np.random.choice([0, 1], n_samples, p=[0.6, 0.4]),
-        'Penile Oedema': np.random.choice([0, 1], n_samples, p=[0.8, 0.2]),
-        'Oral Lesions': np.random.choice([0, 1], n_samples, p=[0.7, 0.3]),
-        'Solitary Lesion': np.random.choice([0, 1], n_samples, p=[0.6, 0.4]),
-        'Swollen Tonsils': np.random.choice([0, 1], n_samples, p=[0.8, 0.2]),
-        'HIV Infection': np.random.choice([0, 1], n_samples, p=[0.9, 0.1]),
-        'Sexually Transmitted Infection': np.random.choice([0, 1], n_samples, p=[0.85, 0.15]),
-        'MonkeyPox': np.random.choice(['Positive', 'Negative'], n_samples, p=[0.4, 0.6])
-    }
-    
-    return pd.DataFrame(data)
+def load_data():
+    df = pd.read_csv("MonkeyPox.csv")
+    return df
 
-# Header utama
-st.markdown("""
-<div class="main-header">
-    <h1>🔬 ANALISIS CLUSTERING MONKEYPOX</h1>
-    <p>Aplikasi Analisis Data untuk Identifikasi Pola Kasus MonkeyPox menggunakan Machine Learning</p>
-</div>
-""", unsafe_allow_html=True)
-
-# Sidebar
-with st.sidebar:
-    st.image("https://via.placeholder.com/200x100/667eea/ffffff?text=MonkeyPox+Analysis", use_container_width=True)
-    st.markdown("### 📊 Navigasi")
+# --- Fungsi untuk preprocessing data ---
+@st.cache_data
+def preprocess_data(df):
+    df_fitur = df.drop(columns=["Patient_ID", "MonkeyPox"])
     
-    show_data_overview = st.checkbox("📋 Overview Data", value=True)
-    show_preprocessing = st.checkbox("🛠️ Preprocessing", value=True)
-    show_clustering = st.checkbox("🎯 Analisis Clustering", value=True)
-    show_visualization = st.checkbox("📈 Visualisasi", value=True)
-    show_results = st.checkbox("📊 Hasil & Interpretasi", value=True)
+    kolom_kategori = df_fitur.select_dtypes(include=["object"]).columns
     
-    st.markdown("---")
-    st.markdown("### ⚙️ Parameter")
-    max_clusters = st.slider("Maksimal Cluster", min_value=3, max_value=10, value=7)
-
-# Load data
-df = load_sample_data()
-
-# Main content
-if show_data_overview:
-    st.markdown('<div class="step-header"><h2>📊 LANGKAH 1: OVERVIEW DATA</h2></div>', unsafe_allow_html=True)
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Total Pasien", df.shape[0])
-    with col2:
-        st.metric("Jumlah Fitur", df.shape[1])
-    with col3:
-        positive_count = (df["MonkeyPox"] == "Positive").sum()
-        st.metric("Kasus Positif", positive_count)
-    with col4:
-        negative_count = (df["MonkeyPox"] == "Negative").sum()
-        st.metric("Kasus Negatif", negative_count)
-    
-    st.markdown('<div class="info-box">', unsafe_allow_html=True)
-    st.write("**Informasi Dataset:**")
-    st.write(f"- Dataset memiliki {df.shape[0]} sampel pasien dengan {df.shape[1]} kolom")
-    st.write(f"- Distribusi kasus: {positive_count} positif ({positive_count/len(df)*100:.1f}%) dan {negative_count} negatif ({negative_count/len(df)*100:.1f}%)")
-    st.write("- Tidak ada data yang hilang ✅")
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Tampilkan sample data
-    st.subheader("🔍 Sample Data")
-    st.dataframe(df.head(10), use_container_width=True)
-    
-    # Distribusi kasus
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fig_pie = px.pie(df, names='MonkeyPox', title='Distribusi Kasus MonkeyPox',
-                        color_discrete_sequence=['#ff7f7f', '#87ceeb'])
-        st.plotly_chart(fig_pie, use_container_width=True)
-    
-    with col2:
-        # Heatmap korelasi fitur boolean
-        boolean_cols = [col for col in df.columns if df[col].dtype in ['int64', 'bool'] and col != 'Patient_ID']
-        if boolean_cols:
-            corr_matrix = df[boolean_cols].corr()
-            fig_corr = px.imshow(corr_matrix, 
-                               title='Matriks Korelasi Fitur',
-                               color_continuous_scale='RdBu_r')
-            st.plotly_chart(fig_corr, use_container_width=True)
-
-if show_preprocessing:
-    st.markdown('<div class="step-header"><h2>🛠️ LANGKAH 2: PREPROCESSING DATA</h2></div>', unsafe_allow_html=True)
-    
-    # Persiapan data
-    df_features = df.drop(columns=["Patient_ID", "MonkeyPox"])
-    
-    # Handle categorical columns
-    if 'Systemic Illness' in df_features.columns:
-        df_features["Systemic Illness"] = df_features["Systemic Illness"].fillna('Unknown')
-        df_encoded = pd.get_dummies(df_features, columns=['Systemic Illness'])
+    if len(kolom_kategori) > 0:
+        # Mengisi nilai yang hilang di 'Systemic Illness' dengan mode
+        df_fitur["Systemic Illness"] = df_fitur["Systemic Illness"].fillna(df_fitur["Systemic Illness"].mode()[0])
+        df_encoded = pd.get_dummies(df_fitur, columns=kolom_kategori)
     else:
-        df_encoded = df_features.copy()
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.write("**Fitur Sebelum Encoding:**")
-        st.write(f"- Jumlah fitur: {df_features.shape[1]}")
-        st.write(f"- Fitur kategori: {len(df_features.select_dtypes(include=['object']).columns)}")
-        st.write(f"- Fitur numerik: {len(df_features.select_dtypes(include=[np.number]).columns)}")
-    
-    with col2:
-        st.write("**Fitur Setelah Encoding:**")
-        st.write(f"- Jumlah fitur: {df_encoded.shape[1]}")
-        st.write("- Semua fitur telah dikonversi menjadi numerik")
-        st.write("- Siap untuk standardisasi")
-    
-    # Standardisasi
+        df_encoded = df_fitur.copy()
+        
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(df_encoded)
     
-    # PCA untuk reduksi dimensi
     pca = PCA(n_components=0.95)
     X_processed = pca.fit_transform(X_scaled)
     
-    st.success(f"✅ Data berhasil diproses! Dimensi direduksi dari {X_scaled.shape[1]} menjadi {X_processed.shape[1]} komponen (menjelaskan {sum(pca.explained_variance_ratio_):.1%} variansi)")
+    return X_processed, pca, df_encoded.columns
 
-if show_clustering:
-    st.markdown('<div class="step-header"><h2>🎯 LANGKAH 3: ANALISIS CLUSTERING</h2></div>', unsafe_allow_html=True)
-    
-    # Mencari jumlah cluster optimal
-    k_range = range(2, max_clusters + 1)
+# --- Fungsi untuk mencari jumlah cluster terbaik ---
+@st.cache_data
+def find_best_k(X_processed):
+    jumlah_k = range(2, 8)
     inertia_values = []
     silhouette_scores = []
     
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for i, k in enumerate(k_range):
-        status_text.text(f'Menguji {k} cluster...')
-        
+    for k in jumlah_k:
         kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
         labels = kmeans.fit_predict(X_processed)
-        
         inertia_values.append(kmeans.inertia_)
         silhouette_scores.append(silhouette_score(X_processed, labels))
         
-        progress_bar.progress((i + 1) / len(k_range))
+    k_terbaik = jumlah_k[np.argmax(silhouette_scores)]
+    score_terbaik = max(silhouette_scores)
     
-    # Cluster terbaik
-    best_k = k_range[np.argmax(silhouette_scores)]
-    best_score = max(silhouette_scores)
+    return k_terbaik, inertia_values, silhouette_scores, jumlah_k
+
+# --- Main Aplikasi Streamlit ---
+def main():
+    df = load_data()
     
-    status_text.empty()
-    progress_bar.empty()
+    st.header("📊 Data Overview")
+    st.write("Berikut adalah 5 baris pertama dari dataset Monkeypox:")
+    st.dataframe(df.head())
     
-    st.success(f"🏆 **Jumlah Cluster Terbaik: {best_k}** dengan Silhouette Score: {best_score:.3f}")
+    st.write(f"Jumlah pasien: {df.shape[0]}")
+    st.write(f"Jumlah kolom: {df.shape[1]}")
     
-    # Visualisasi pemilihan cluster
+    st.subheader("Distribusi Kasus Monkeypox")
+    kasus = df["MonkeyPox"].value_counts()
+    fig, ax = plt.subplots()
+    sns.barplot(x=kasus.index, y=kasus.values, ax=ax, palette="viridis")
+    ax.set_title("Distribusi Kasus Monkeypox")
+    ax.set_xlabel("Status Monkeypox")
+    ax.set_ylabel("Jumlah Pasien")
+    st.pyplot(fig)
+    
+    data_hilang = df.isnull().sum().sum()
+    if data_hilang == 0:
+        st.success("✅ Bagus! Tidak ada data yang hilang.")
+    else:
+        st.warning(f"⚠️ Ada {data_hilang} data yang hilang, perlu dibersihkan.")
+    
+    st.header("🛠️ Data Preprocessing & Dimensionality Reduction")
+    X_processed, pca, encoded_cols = preprocess_data(df)
+    st.write(f"Data direduksi menjadi {X_processed.shape[1]} komponen, menjelaskan {sum(pca.explained_variance_ratio_):.1%} variansi.")
+    
+    st.header("🎯 Mencari Jumlah Cluster Terbaik")
+    k_terbaik, inertia_values, silhouette_scores, jumlah_k = find_best_k(X_processed)
+    
+    st.subheader("Elbow Method & Silhouette Score")
     col1, col2 = st.columns(2)
     
     with col1:
-        fig_elbow = go.Figure()
-        fig_elbow.add_trace(go.Scatter(x=list(k_range), y=inertia_values, 
-                                     mode='lines+markers', name='Inertia',
-                                     line=dict(color='blue', width=3),
-                                     marker=dict(size=8)))
-        fig_elbow.update_layout(title='Elbow Method - Pemilihan Cluster Optimal',
-                              xaxis_title='Jumlah Cluster',
-                              yaxis_title='Inertia')
-        st.plotly_chart(fig_elbow, use_container_width=True)
-    
-    with col2:
-        fig_sil = go.Figure()
-        fig_sil.add_trace(go.Scatter(x=list(k_range), y=silhouette_scores,
-                                   mode='lines+markers', name='Silhouette Score',
-                                   line=dict(color='red', width=3),
-                                   marker=dict(size=8)))
-        fig_sil.add_vline(x=best_k, line_dash="dash", line_color="green",
-                         annotation_text=f"Terbaik: {best_k}")
-        fig_sil.update_layout(title='Silhouette Score - Kualitas Clustering',
-                            xaxis_title='Jumlah Cluster',
-                            yaxis_title='Silhouette Score')
-        st.plotly_chart(fig_sil, use_container_width=True)
-
-if show_visualization:
-    st.markdown('<div class="step-header"><h2>📈 LANGKAH 4: VISUALISASI HASIL</h2></div>', unsafe_allow_html=True)
-    
-    # Clustering final
-    kmeans_final = KMeans(n_clusters=best_k, random_state=42, n_init=10)
-    cluster_labels = kmeans_final.fit_predict(X_processed)
-    df["Cluster"] = cluster_labels
-    
-    # PCA 2D untuk visualisasi
-    pca_2d = PCA(n_components=2)
-    X_pca = pca_2d.fit_transform(X_scaled)
-    
-    # Distribusi cluster
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        # Distribusi pasien per cluster
-        cluster_dist = pd.Series(cluster_labels).value_counts().sort_index()
-        fig_bar = px.bar(x=cluster_dist.index, y=cluster_dist.values,
-                        title='Distribusi Pasien per Cluster',
-                        labels={'x': 'Cluster', 'y': 'Jumlah Pasien'},
-                        color=cluster_dist.values, color_continuous_scale='viridis')
-        st.plotly_chart(fig_bar, use_container_width=True)
-    
-    with col2:
-        # Visualisasi PCA dengan cluster
-        df_pca = pd.DataFrame({
-            'PC1': X_pca[:, 0],
-            'PC2': X_pca[:, 1],
-            'Cluster': cluster_labels,
-            'MonkeyPox': df['MonkeyPox']
-        })
+        fig_elbow, ax_elbow = plt.subplots()
+        ax_elbow.plot(jumlah_k, inertia_values, "bo-", linewidth=2, markersize=8)
+        ax_elbow.set_xlabel("Jumlah Cluster")
+        ax_elbow.set_ylabel("Inertia (Kepadatan dalam Cluster)")
+        ax_elbow.set_title("Elbow Method - Mencari Jumlah Cluster Optimal")
+        ax_elbow.grid(True, alpha=0.3)
+        ax_elbow.set_xticks(list(jumlah_k))
+        st.pyplot(fig_elbow)
         
-        fig_pca = px.scatter(df_pca, x='PC1', y='PC2', color='Cluster',
-                           title='Visualisasi Cluster (PCA 2D)',
-                           labels={'PC1': f'PC1 ({pca_2d.explained_variance_ratio_[0]:.1%})',
-                                 'PC2': f'PC2 ({pca_2d.explained_variance_ratio_[1]:.1%})'},
-                           color_continuous_scale='viridis')
-        st.plotly_chart(fig_pca, use_container_width=True)
+    with col2:
+        fig_silhouette, ax_silhouette = plt.subplots()
+        ax_silhouette.plot(jumlah_k, silhouette_scores, "ro-", linewidth=2, markersize=8)
+        ax_silhouette.axvline(x=k_terbaik, color="green", linestyle="--", alpha=0.7,
+                               label=f"Terbaik: {k_terbaik} cluster")
+        ax_silhouette.set_xlabel("Jumlah Cluster")
+        ax_silhouette.set_ylabel("Silhouette Score")
+        ax_silhouette.set_title("Silhouette Score - Kualitas Pemisahan Cluster")
+        ax_silhouette.legend()
+        ax_silhouette.grid(True, alpha=0.3)
+        ax_silhouette.set_xticks(list(jumlah_k))
+        st.pyplot(fig_silhouette)
+        
+    st.success(f"🏆 Jumlah cluster terbaik berdasarkan Silhouette Score adalah: {k_terbaik} dengan score: {max(silhouette_scores):.3f}")
     
-    with col3:
-        # Status MonkeyPox vs Cluster
-        crosstab = pd.crosstab(df["Cluster"], df["MonkeyPox"])
-        fig_heatmap = px.imshow(crosstab.values,
-                              x=crosstab.columns,
-                              y=crosstab.index,
-                              title='Cluster vs Status MonkeyPox',
-                              color_continuous_scale='Blues',
-                              text_auto=True)
-        fig_heatmap.update_layout(xaxis_title='Status MonkeyPox',
-                                yaxis_title='Cluster')
-        st.plotly_chart(fig_heatmap, use_container_width=True)
+    st.header("✨ Hasil Clustering")
+    kmeans = KMeans(n_clusters=k_terbaik, random_state=42, n_init=10)
+    df["Cluster"] = kmeans.fit_predict(X_processed)
     
-    # Visualisasi distribusi detail
-    st.subheader("📊 Analisis Detail per Cluster")
+    st.subheader("Ukuran Masing-masing Cluster")
+    cluster_sizes = df["Cluster"].value_counts().sort_index()
+    st.dataframe(cluster_sizes.reset_index().rename(columns={'index': 'Cluster', 'count': 'Jumlah Pasien'}))
     
-    fig_subplots = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=['Distribusi Kasus per Cluster', 'Persentase Status per Cluster',
-                       'Pie Chart Cluster 0', 'Pie Chart Cluster 1'],
-        specs=[[{"secondary_y": False}, {"secondary_y": False}],
-               [{"type": "pie"}, {"type": "pie"}]]
+    fig_pie, ax_pie = plt.subplots()
+    ax_pie.pie(cluster_sizes, labels=cluster_sizes.index, autopct='%1.1f%%', startangle=90, colors=sns.color_palette("pastel"))
+    ax_pie.axis('equal') # Equal aspect ratio ensures that pie is drawn as a circle.
+    ax_pie.set_title("Distribusi Pasien per Cluster")
+    st.pyplot(fig_pie)
+    
+    st.subheader("Karakteristik Cluster")
+    cluster_centers = pd.DataFrame(kmeans.cluster_centers_, columns=encoded_cols)
+    st.write("Rata-rata nilai fitur untuk setiap cluster (setelah standardisasi dan PCA):")
+    st.dataframe(cluster_centers)
+    
+    st.markdown("**Analisis Karakteristik Cluster (Berdasarkan Fitur Asli):**")
+    # Convert boolean columns to int for mean calculation
+    boolean_cols = [col for col in df.columns if df[col].dtype == 'bool']
+    for col in boolean_cols:
+        df[col] = df[col].astype(int)
+
+    # Group by cluster and calculate mean for relevant features
+    cluster_summary = df.groupby('Cluster')[['Systemic Illness', 'Rectal Pain', 'Sore Throat', 'Penile Oedema', 
+                                            'Oral Lesions', 'Solitary Lesion', 'Swollen Tonsils', 
+                                            'HIV Infection', 'Sexually Transmitted Infection']].mean()
+    st.dataframe(cluster_summary)
+
+    st.subheader("Visualisasi Cluster (PCA 2D)")
+    pca_2d = PCA(n_components=2)
+    X_pca_2d = pca_2d.fit_transform(X_processed)
+    df_pca_2d = pd.DataFrame(X_pca_2d, columns=["PC1", "PC2"])
+    df_pca_2d["Cluster"] = df["Cluster"]
+    
+    fig_scatter, ax_scatter = plt.subplots(figsize=(10, 8))
+    sns.scatterplot(
+        x="PC1", y="PC2",
+        hue="Cluster",
+        palette="viridis",
+        data=df_pca_2d,
+        legend="full",
+        alpha=0.7,
+        ax=ax_scatter
     )
     
-    # Subplot 1: Bar chart
-    for status in df['MonkeyPox'].unique():
-        data = df[df['MonkeyPox'] == status]['Cluster'].value_counts().sort_index()
-        fig_subplots.add_trace(
-            go.Bar(x=data.index, y=data.values, name=status),
-            row=1, col=1
-        )
+    # Plot centroids
+    centroids_2d = pca_2d.transform(kmeans.cluster_centers_)
+    ax_scatter.scatter(
+        centroids_2d[:, 0], centroids_2d[:, 1],
+        marker="X", s=200, color="red", label="Centroids", zorder=10
+    )
     
-    # Subplot 2: Percentage bar chart
-    prop_cluster = pd.crosstab(df["Cluster"], df["MonkeyPox"], normalize="index") * 100
-    for status in prop_cluster.columns:
-        fig_subplots.add_trace(
-            go.Bar(x=prop_cluster.index, y=prop_cluster[status], name=f'{status} %'),
-            row=1, col=2
-        )
+    ax_scatter.set_title("Visualisasi Cluster dengan PCA (2 Komponen Utama)")
+    ax_scatter.set_xlabel("Principal Component 1")
+    ax_scatter.set_ylabel("Principal Component 2")
+    ax_scatter.legend()
+    st.pyplot(fig_scatter)
     
-    # Subplot 3 & 4: Pie charts untuk cluster 0 dan 1
-    if 0 in df['Cluster'].values:
-        data_cluster_0 = df[df["Cluster"] == 0]["MonkeyPox"].value_counts()
-        fig_subplots.add_trace(
-            go.Pie(labels=data_cluster_0.index, values=data_cluster_0.values),
-            row=2, col=1
-        )
+    st.header("🌳 Hierarchical Clustering (Dendrogram)")
+    st.write("Dendrogram membantu memvisualisasikan hierarki cluster. Perhatikan bahwa untuk dataset besar, dendrogram mungkin terlihat sangat padat.")
     
-    if 1 in df['Cluster'].values:
-        data_cluster_1 = df[df["Cluster"] == 1]["MonkeyPox"].value_counts()
-        fig_subplots.add_trace(
-            go.Pie(labels=data_cluster_1.index, values=data_cluster_1.values),
-            row=2, col=2
-        )
-    
-    fig_subplots.update_layout(height=600, showlegend=True)
-    st.plotly_chart(fig_subplots, use_container_width=True)
+    # Limit the number of samples for dendrogram for better visualization with large datasets
+    # Taking a random sample of 1000 points if dataset is too large
+    if X_processed.shape[0] > 1000:
+        np.random.seed(42)
+        sample_indices = np.random.choice(X_processed.shape[0], 1000, replace=False)
+        X_dendrogram = X_processed[sample_indices]
+    else:
+        X_dendrogram = X_processed
 
-if show_results:
-    st.markdown('<div class="step-header"><h2>📊 LANGKAH 5: HASIL & INTERPRETASI</h2></div>', unsafe_allow_html=True)
+    linked = linkage(X_dendrogram, method='ward')
     
-    # Evaluasi clustering
-    silhouette_final = silhouette_score(X_scaled, cluster_labels)
+    fig_dendro = plt.figure(figsize=(15, 7))
+    dendrogram(linked,
+               orientation='top',
+               distance_sort='descending',
+               show_leaf_counts=True)
+    plt.title('Dendrogram Hierarchical Clustering')
+    plt.xlabel('Sample Index')
+    plt.ylabel('Distance')
+    st.pyplot(fig_dendro)
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.metric("Silhouette Score Final", f"{silhouette_final:.3f}")
-        st.write("**Interpretasi:**")
-        if silhouette_final > 0.7:
-            st.success("Sangat baik - Cluster sangat terpisah dengan jelas")
-        elif silhouette_final > 0.5:
-            st.success("Baik - Cluster terpisah dengan cukup jelas")
-        elif silhouette_final > 0.3:
-            st.warning("Cukup - Cluster memiliki pemisahan yang moderat")
-        else:
-            st.error("Kurang baik - Cluster tidak terpisah dengan jelas")
-    
-    with col2:
-        # Tabel silang
-        crosstab_result = pd.crosstab(df["Cluster"], df["MonkeyPox"], margins=True)
-        st.write("**Tabel Cluster vs Status MonkeyPox:**")
-        st.dataframe(crosstab_result, use_container_width=True)
-    
-    # Analisis fitur penting
-    st.subheader("🔍 Analisis Fitur Penting per Cluster")
-    
-    fitur_cluster = df_encoded.copy()
-    fitur_cluster["Cluster"] = cluster_labels
-    
-    rata_rata_cluster = fitur_cluster.groupby("Cluster").mean()
-    rata_rata_keseluruhan = df_encoded.mean()
-    
-    # Buat tabs untuk setiap cluster
-    cluster_tabs = st.tabs([f"Cluster {i}" for i in range(best_k)])
-    
-    for i, tab in enumerate(cluster_tabs):
-        with tab:
-            if i in rata_rata_cluster.index:
-                rata_cluster = rata_rata_cluster.loc[i]
-                perbedaan = np.abs(rata_cluster - rata_rata_keseluruhan)
-                fitur_top = perbedaan.nlargest(5)
-                
-                col1, col2 = st.columns([1, 2])
-                
-                with col1:
-                    st.write(f"**Karakteristik Cluster {i}:**")
-                    jumlah_pasien = len(df[df['Cluster'] == i])
-                    positif_cluster = len(df[(df['Cluster'] == i) & (df['MonkeyPox'] == 'Positive')])
-                    st.write(f"- Jumlah pasien: {jumlah_pasien}")
-                    st.write(f"- Kasus positif: {positif_cluster} ({positif_cluster/jumlah_pasien*100:.1f}%)")
-                
-                with col2:
-                    # Bar chart fitur penting
-                    fig_features = px.bar(
-                        x=list(fitur_top.values),
-                        y=list(fitur_top.index),
-                        orientation='h',
-                        title=f'Top 5 Fitur Pembeda Cluster {i}',
-                        labels={'x': 'Perbedaan dari Rata-rata', 'y': 'Fitur'}
-                    )
-                    fig_features.update_layout(height=300)
-                    st.plotly_chart(fig_features, use_container_width=True)
-    
-    # Kesimpulan
-    st.markdown('<div class="info-box">', unsafe_allow_html=True)
-    st.markdown("### 📋 **KESIMPULAN ANALISIS:**")
-    st.write(f"""
-    1. **Jumlah Cluster Optimal:** {best_k} cluster dengan Silhouette Score {best_score:.3f}
-    2. **Kualitas Clustering:** {'Sangat baik' if best_score > 0.7 else 'Baik' if best_score > 0.5 else 'Cukup' if best_score > 0.3 else 'Perlu perbaikan'}
-    3. **Distribusi Data:** Dataset berhasil dikelompokkan menjadi {best_k} cluster yang berbeda
-    4. **Aplikasi:** Hasil clustering dapat membantu identifikasi pola kasus MonkeyPox untuk diagnosis yang lebih tepat
-    """)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("--- ")
+    st.info("Aplikasi ini dibuat untuk tugas akhir analisis clustering Monkeypox.")
 
-# Footer
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: #666;'>
-    <p>🔬 MonkeyPox Clustering Analysis | Dibuat dengan ❤️ menggunakan Streamlit</p>
-    <p>Untuk keperluan analisis dan penelitian medis</p>
-</div>
-""", unsafe_allow_html=True)
+if __name__ == "__main__":
+    main()
