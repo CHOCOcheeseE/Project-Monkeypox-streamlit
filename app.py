@@ -473,6 +473,7 @@ with tab5:
                 title=f"Top Features untuk Cluster {cluster_id}",
                 labels={'x': 'Difference from Overall Mean', 'y': 'Features'}
             )
+            # … akhir of tab5 loop …
             fig_importance.update_layout(height=300)
             st.plotly_chart(fig_importance, use_container_width=True)
 
@@ -492,7 +493,6 @@ with col1:
     st.markdown(create_download_link(results_df, "MonkeyPox_Clustering_Results"), unsafe_allow_html=True)
 with col2:
     summary_df = pd.crosstab(results_df['Cluster'], results_df['MonkeyPox'])
-    # Agar download CSV: convert crosstab ke DataFrame biasa
     summary_df_reset = summary_df.reset_index()
     st.markdown(create_download_link(summary_df_reset, "Cluster_Summary"), unsafe_allow_html=True)
 with col3:
@@ -513,7 +513,6 @@ with col3:
 # ===================================
 # FOOTER
 # ===================================
-st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 2rem;">
     <p>🧬 MonkeyPox Clustering Analysis | Powered by Streamlit & Machine Learning</p>
