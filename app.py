@@ -85,26 +85,41 @@ def preprocess_data(df):
     4. PCA untuk reduksi dimensi
     """
     # Menghapus kolom yang tidak diperlukan untuk clustering
-    df_fitur = df.drop(columns=["Patient_ID", "MonkeyPox"])
+    df_fitur = df.drop(columns=[col for col in ["Patient_ID", "MonkeyPox"] if col in df.columns])
     
     # Melihat jenis data
     kolom_kategori = df_fitur.select_dtypes(include=["object"]).columns
     
     # Mengubah data kategori menjadi angka
     if len(kolom_kategori) > 0:
-        # Mengisi nilai yang hilang di 'Systemic Illness' dengan mode
-        df_fitur["Systemic Illness"] = df_fitur["Systemic Illness"].fillna(df_fitur["Systemic Illness"].mode()[0])
+        # Mengisi nilai yang hilang di kolom kategori dengan mode
+        for col in kolom_kategori:
+            if df_fitur[col].isnull().any():
+                df_fitur[col] = df_fitur[col].fillna(df_fitur[col].mode()[0])
         df_encoded = pd.get_dummies(df_fitur, columns=kolom_kategori)
     else:
         df_encoded = df_fitur.copy()
-        
+        # Jika ada kolom numeric dengan NaN, bisa di-handle di luar
+    
+    # Pastikan tidak ada NaN sebelum scaling
+    if df_encoded.isnull().sum().sum() > 0:
+        df_encoded = df_encoded.fillna(df_encoded.mean())
+    
     # Standardisasi data agar semua fitur memiliki skala yang sama
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(df_encoded)
+    try:
+        X_scaled = scaler.fit_transform(df_encoded)
+    except Exception as e:
+        st.error(f"Error saat scaling data: {e}")
+        st.stop()
     
     # Menerapkan PCA untuk reduksi dimensi
-    pca = PCA(n_components=0.95)  # Pilih komponen yang menjelaskan 95% variansi
-    X_processed = pca.fit_transform(X_scaled)
+    try:
+        pca = PCA(n_components=0.95, random_state=42)  # Pilih komponen yang menjelaskan 95% variansi
+        X_processed = pca.fit_transform(X_scaled)
+    except Exception as e:
+        st.error(f"Error saat PCA: {e}")
+        st.stop()
     
     return X_processed, pca, df_encoded, scaler
 
@@ -121,22 +136,24 @@ def find_best_k(X_processed):
     silhouette_scores = []
     
     for k in jumlah_k:
-        # Membuat model K-means
         kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
         labels = kmeans.fit_predict(X_processed)
-        
-        # Menghitung metrik evaluasi
-        inertia = kmeans.inertia_  # Mengukur kepadatan cluster
-        sil_score = silhouette_score(X_processed, labels)  # Mengukur kualitas pemisahan
-        
-        inertia_values.append(inertia)
+        inertia_values.append(kmeans.inertia_)
+        try:
+            sil_score = silhouette_score(X_processed, labels)
+        except Exception:
+            sil_score = np.nan
         silhouette_scores.append(sil_score)
-        
-    # Mencari k terbaik berdasarkan silhouette score
-    k_terbaik = jumlah_k[np.argmax(silhouette_scores)]
-    score_terbaik = max(silhouette_scores)
     
-    return k_terbaik, inertia_values, silhouette_scores, jumlah_k
+    # Pilih k dengan silhouette highest, jika semua NaN, fallback ke elbow (k=2)
+    if not all(np.isnan(silhouette_scores)):
+        k_terbaik = jumlah_k[np.nanargmax(silhouette_scores)]
+        score_terbaik = np.nanmax(silhouette_scores)
+    else:
+        k_terbaik = 2
+        score_terbaik = silhouette_scores[0]
+    
+    return k_terbaik, inertia_values, silhouette_scores, list(jumlah_k)
 
 # --- Fungsi untuk melakukan clustering final ---
 @st.cache_data
@@ -165,12 +182,11 @@ def main():
     # BAGIAN 1: DATA OVERVIEW
     if selected_section == "📊 Data Overview":
         st.markdown("<h2 class=\"section-header\">📊 LANGKAH 1: MEMUAT DATA</h2>", unsafe_allow_html=True)
-        
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.markdown("<div class=\"metric-card\"><h3>Jumlah Pasien</h3><h2 style=\"color: #1f77b4;\">25,000</h2></div>", unsafe_allow_html=True)
+            st.markdown("<div class=\"metric-card\"><h3>Jumlah Pasien</h3><h2 style=\"color: #1f77b4;\">{:,}</h2></div>".format(len(df)), unsafe_allow_html=True)
         with col2:
-            st.markdown("<div class=\"metric-card\"><h3>Jumlah Kolom</h3><h2 style=\"color: #ff7f0e;\">11</h2></div>", unsafe_allow_html=True)
+            st.markdown("<div class=\"metric-card\"><h3>Jumlah Kolom</h3><h2 style=\"color: #ff7f0e;\">{}</h2></div>".format(len(df.columns)), unsafe_allow_html=True)
         with col3:
             data_hilang = df.isnull().sum().sum()
             st.markdown(f"<div class=\"metric-card\"><h3>Data Hilang</h3><h2 style=\"color: #d62728;\">{data_hilang:,}</h2></div>", unsafe_allow_html=True)
@@ -181,36 +197,30 @@ def main():
         
         st.subheader("📋 Struktur Dataset")
         col1, col2 = st.columns(2)
-        
         with col1:
             st.write("**Kolom-kolom dalam dataset:**")
             for i, col in enumerate(df.columns, 1):
                 st.write(f"  {i}. **{col}** ({df[col].dtype})")
         
         with col2:
-            st.subheader("📊 Distribusi Kasus Monkeypox")
-            kasus = df["MonkeyPox"].value_counts()
-            
-            # Membuat bar chart yang menarik
-            fig, ax = plt.subplots(figsize=(8, 6))
-            colors = ["#ff7f0e", "#1f77b4"]
-            bars = ax.bar(kasus.index, kasus.values, color=colors, alpha=0.8, edgecolor='black', linewidth=1.2)
-            
-            # Menambahkan label pada bar
-            for bar, value in zip(bars, kasus.values):
-                height = bar.get_height()
-                ax.text(bar.get_x() + bar.get_width()/2., height + 200,
-                       f'{value:,}\n({value/len(df)*100:.1f}%)',
-                       ha='center', va='bottom', fontweight='bold', fontsize=11)
-            
-            ax.set_title("Distribusi Kasus Monkeypox", fontsize=16, fontweight='bold', pad=20)
-            ax.set_xlabel("Status Monkeypox", fontsize=12, fontweight='bold')
-            ax.set_ylabel("Jumlah Pasien", fontsize=12, fontweight='bold')
-            ax.grid(True, alpha=0.3, axis='y')
-            plt.tight_layout()
-            st.pyplot(fig)
+            if 'MonkeyPox' in df.columns:
+                st.subheader("📊 Distribusi Kasus Monkeypox")
+                kasus = df["MonkeyPox"].value_counts()
+                fig, ax = plt.subplots(figsize=(8, 6))
+                colors = ["#ff7f0e", "#1f77b4"]
+                bars = ax.bar(kasus.index.astype(str), kasus.values, color=colors[:len(kasus)], alpha=0.8, edgecolor='black', linewidth=1.2)
+                for bar, value in zip(bars, kasus.values):
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2., height + max(kasus.values)*0.01,
+                           f'{value:,}\n({value/len(df)*100:.1f}%)',
+                           ha='center', va='bottom', fontweight='bold', fontsize=11)
+                ax.set_title("Distribusi Kasus Monkeypox", fontsize=16, fontweight='bold', pad=20)
+                ax.set_xlabel("Status Monkeypox", fontsize=12, fontweight='bold')
+                ax.set_ylabel("Jumlah Pasien", fontsize=12, fontweight='bold')
+                ax.grid(True, alpha=0.3, axis='y')
+                plt.tight_layout()
+                st.pyplot(fig)
         
-        # Status data hilang
         if data_hilang == 0:
             st.markdown("<div class=\"success-box\">✅ <strong>Bagus!</strong> Tidak ada data yang hilang.</div>", unsafe_allow_html=True)
         else:
@@ -219,40 +229,27 @@ def main():
     # BAGIAN 2: DATA PREPROCESSING
     elif selected_section == "🛠️ Data Preprocessing":
         st.markdown("<h2 class=\"section-header\">🛠️ LANGKAH 2: MENYIAPKAN DATA</h2>", unsafe_allow_html=True)
-        
         X_processed, pca, df_encoded, scaler = preprocess_data(df)
-        
         col1, col2 = st.columns(2)
-        
         with col1:
             st.subheader("🔧 Tahapan Preprocessing")
-            st.write("1. **Menghapus kolom tidak relevan**: Patient_ID, MonkeyPox")
-            st.write("2. **Encoding data kategori**: One-hot encoding untuk 'Systemic Illness'")
+            st.write("1. **Menghapus kolom tidak relevan**: Patient_ID, MonkeyPox jika ada")
+            st.write("2. **Encoding data kategori**: One-hot encoding untuk kolom kategori")
             st.write("3. **Standardisasi**: Menggunakan StandardScaler")
             st.write("4. **Reduksi dimensi**: PCA dengan 95% explained variance")
-            
             st.subheader("📈 Hasil Preprocessing")
-            st.write(f"- **Fitur asli**: 9 kolom")
-            st.write(f"- **Setelah encoding**: {df_encoded.shape[1]} fitur")
+            st.write(f"- **Fitur asli**: {df_encoded.shape[1]} kolom setelah encoding")
             st.write(f"- **Setelah PCA**: {X_processed.shape[1]} komponen")
             st.write(f"- **Explained variance**: {sum(pca.explained_variance_ratio_):.1%}")
-        
         with col2:
             st.subheader("📊 Explained Variance Ratio")
-            
-            # Plot explained variance
             fig, ax = plt.subplots(figsize=(10, 6))
-            
-            # Individual explained variance
             ax.bar(range(1, len(pca.explained_variance_ratio_) + 1), 
                    pca.explained_variance_ratio_, 
                    alpha=0.7, color='skyblue', label='Individual')
-            
-            # Cumulative explained variance
             cumsum = np.cumsum(pca.explained_variance_ratio_)
             ax.plot(range(1, len(cumsum) + 1), cumsum, 
                    'ro-', linewidth=2, markersize=6, label='Cumulative')
-            
             ax.axhline(y=0.95, color='red', linestyle='--', alpha=0.8, label='95% threshold')
             ax.set_xlabel('Principal Component', fontweight='bold')
             ax.set_ylabel('Explained Variance Ratio', fontweight='bold')
@@ -261,57 +258,54 @@ def main():
             ax.grid(True, alpha=0.3)
             plt.tight_layout()
             st.pyplot(fig)
-        
-        # Informasi detail preprocessing
         st.subheader("ℹ️ Detail Preprocessing")
-        
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Data Mean (setelah scaling)", f"{np.mean(scaler.transform(df_encoded)):.6f}")
+            try:
+                mean_val = np.mean(scaler.transform(df_encoded))
+            except Exception:
+                mean_val = np.nan
+            st.metric("Data Mean (setelah scaling)", f"{mean_val:.6f}" if not np.isnan(mean_val) else "NaN")
         with col2:
-            st.metric("Data Std (setelah scaling)", f"{np.std(scaler.transform(df_encoded)):.6f}")
+            try:
+                std_val = np.std(scaler.transform(df_encoded))
+            except Exception:
+                std_val = np.nan
+            st.metric("Data Std (setelah scaling)", f"{std_val:.6f}" if not np.isnan(std_val) else "NaN")
         with col3:
             st.metric("Total Variance Explained", f"{sum(pca.explained_variance_ratio_):.1%}")
     
     # BAGIAN 3: OPTIMASI CLUSTER
     elif selected_section == "🎯 Optimasi Cluster":
         st.markdown("<h2 class=\"section-header\">🎯 LANGKAH 3: MENCARI JUMLAH CLUSTER TERBAIK</h2>", unsafe_allow_html=True)
-        
         X_processed, pca, df_encoded, scaler = preprocess_data(df)
         k_terbaik, inertia_values, silhouette_scores, jumlah_k = find_best_k(X_processed)
-        
         st.write("Kita akan mencoba berbagai jumlah cluster dari 2 sampai 7 untuk menemukan yang optimal:")
-        
-        # Tabel hasil evaluasi
         results_df = pd.DataFrame({
-            'Jumlah Cluster': list(jumlah_k),
+            'Jumlah Cluster': jumlah_k,
             'Inertia': inertia_values,
-            'Silhouette Score': [f"{score:.3f}" for score in silhouette_scores]
+            'Silhouette Score': [f"{score:.3f}" if not np.isnan(score) else 'nan' for score in silhouette_scores]
         })
-        
-        # Highlight baris terbaik
         def highlight_best(row):
-            if row['Jumlah Cluster'] == k_terbaik:
-                return ['background-color: #90EE90'] * len(row)
+            try:
+                if int(row['Jumlah Cluster']) == k_terbaik:
+                    return ['background-color: #90EE90'] * len(row)
+            except:
+                pass
             return [''] * len(row)
-        
         st.subheader("📊 Hasil Evaluasi Cluster")
         styled_df = results_df.style.apply(highlight_best, axis=1)
         st.dataframe(styled_df, use_container_width=True)
-        
-        # Hasil terbaik
-        st.markdown(f"""
-        <div class=\"success-box\">
-        <h3>🏆 HASIL OPTIMAL</h3>
-        <p><strong>Jumlah cluster terbaik:</strong> {k_terbaik} cluster</p>
-        <p><strong>Silhouette Score:</strong> {max(silhouette_scores):.3f}</p>
-        <p><strong>Interpretasi:</strong> Semakin tinggi Silhouette Score (mendekati 1), semakin baik kualitas pemisahan cluster.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Penjelasan metrik
+        if not np.isnan(k_terbaik):
+            st.markdown(f"""
+            <div class=\"success-box\">
+            <h3>🏆 HASIL OPTIMAL</h3>
+            <p><strong>Jumlah cluster terbaik:</strong> {k_terbaik} cluster</p>
+            <p><strong>Silhouette Score:</strong> {score_terbaik:.3f}</p>
+            <p><strong>Interpretasi:</strong> Semakin tinggi Silhouette Score (mendekati 1), semakin baik kualitas pemisahan cluster.</p>
+            </div>
+            """, unsafe_allow_html=True)
         st.subheader("📚 Penjelasan Metrik Evaluasi")
-        
         col1, col2 = st.columns(2)
         with col1:
             st.write("""
@@ -321,7 +315,6 @@ def main():
             - Mengukur seberapa mirip objek dengan cluster sendiri vs cluster lain
             - Score > 0.5 dianggap baik
             """)
-        
         with col2:
             st.write("""
             **📉 Inertia (WCSS):**
@@ -334,49 +327,39 @@ def main():
     # BAGIAN 4: VISUALISASI PEMILIHAN
     elif selected_section == "📈 Visualisasi Pemilihan":
         st.markdown("<h2 class=\"section-header\">📈 LANGKAH 4: VISUALISASI PEMILIHAN CLUSTER</h2>", unsafe_allow_html=True)
-        
         X_processed, pca, df_encoded, scaler = preprocess_data(df)
         k_terbaik, inertia_values, silhouette_scores, jumlah_k = find_best_k(X_processed)
-        
-        # Membuat grafik untuk membantu memahami pemilihan cluster
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-        
-        # Grafik Elbow Method (untuk melihat penurunan inertia)
-        ax1.plot(jumlah_k, inertia_values, "bo-", linewidth=3, markersize=10, color='#1f77b4')
+        fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+        ax1, ax2 = axes
+        ax1.plot(jumlah_k, inertia_values, 'bo-', linewidth=3, markersize=10)
         ax1.set_xlabel("Jumlah Cluster", fontweight='bold')
         ax1.set_ylabel("Inertia (Kepadatan dalam Cluster)", fontweight='bold')
         ax1.set_title("Elbow Method - Mencari Jumlah Cluster Optimal", fontweight='bold', fontsize=14)
         ax1.grid(True, alpha=0.3)
         ax1.set_xticks(jumlah_k)
-        
-        # Menambahkan anotasi nilai
-        for i, (x, y) in enumerate(zip(jumlah_k, inertia_values)):
+        for x, y in zip(jumlah_k, inertia_values):
             ax1.annotate(f'{y:.0f}', (x, y), textcoords="offset points", xytext=(0,10), ha='center', fontsize=9)
-        
-        # Grafik Silhouette Score
-        ax2.plot(jumlah_k, silhouette_scores, "ro-", linewidth=3, markersize=10, color='#ff7f0e')
+        ax2.plot(jumlah_k, silhouette_scores, 'ro-', linewidth=3, markersize=10)
         ax2.axvline(x=k_terbaik, color="green", linestyle="--", alpha=0.8, linewidth=2,
                    label=f"Terbaik: {k_terbaik} cluster")
-        ax2.axhline(y=max(silhouette_scores), color="green", linestyle=":", alpha=0.6, linewidth=1)
+        if not np.isnan(max(silhouette_scores)):
+            ax2.axhline(y=max(silhouette_scores), color="green", linestyle=":", alpha=0.6, linewidth=1)
         ax2.set_xlabel("Jumlah Cluster", fontweight='bold')
         ax2.set_ylabel("Silhouette Score", fontweight='bold')
         ax2.set_title("Silhouette Score - Kualitas Pemisahan Cluster", fontweight='bold', fontsize=14)
         ax2.legend(fontsize=11)
         ax2.grid(True, alpha=0.3)
         ax2.set_xticks(jumlah_k)
-        
-        # Menambahkan anotasi nilai
-        for i, (x, y) in enumerate(zip(jumlah_k, silhouette_scores)):
-            ax2.annotate(f'{y:.3f}', (x, y), textcoords="offset points", xytext=(0,10), ha='center', fontsize=9)
-        
+        for x, y in zip(jumlah_k, silhouette_scores):
+            label = f'{y:.3f}' if not np.isnan(y) else 'nan'
+            ax2.annotate(label, (x, y if not np.isnan(y) else 0), textcoords="offset points", xytext=(0,10), ha='center', fontsize=9)
         plt.tight_layout()
         st.pyplot(fig)
-        
         st.markdown(f"""
         <div class=\"success-box\">
         <h4>📊 Interpretasi Grafik:</h4>
         <p>• <strong>Elbow Method:</strong> Mencari titik "siku" dimana penurunan inertia mulai melambat</p>
-        <p>• <strong>Silhouette Score:</strong> Grafik menunjukkan bahwa <strong>{k_terbaik} cluster</strong> memberikan hasil terbaik dengan score <strong>{max(silhouette_scores):.3f}</strong></p>
+        <p>• <strong>Silhouette Score:</strong> Grafik menunjukkan bahwa <strong>{k_terbaik} cluster</strong> memberikan hasil terbaik dengan score <strong>{max(silhouette_scores) if not np.isnan(max(silhouette_scores)) else 'nan'}:.3f</strong></p>
         <p>• Kombinasi kedua metrik ini memvalidasi pilihan {k_terbaik} cluster sebagai optimal</p>
         </div>
         """, unsafe_allow_html=True)
@@ -384,20 +367,13 @@ def main():
     # BAGIAN 5: HASIL CLUSTERING
     elif selected_section == "✨ Hasil Clustering":
         st.markdown("<h2 class=\"section-header\">✨ LANGKAH 5: HASIL CLUSTERING</h2>", unsafe_allow_html=True)
-        
         X_processed, pca, df_encoded, scaler = preprocess_data(df)
         k_terbaik, inertia_values, silhouette_scores, jumlah_k = find_best_k(X_processed)
         kmeans, cluster_labels = perform_final_clustering(X_processed, k_terbaik)
-        
-        # Menambahkan hasil cluster ke dataframe asli
         df_result = df.copy()
         df_result["Cluster"] = cluster_labels
-        
-        # Statistik cluster
         st.subheader("📊 Distribusi Cluster")
-        
         col1, col2 = st.columns([1, 2])
-        
         with col1:
             cluster_sizes = df_result["Cluster"].value_counts().sort_index()
             cluster_df = pd.DataFrame({
@@ -406,9 +382,7 @@ def main():
                 'Persentase': [f'{(size/len(df_result)*100):.1f}%' for size in cluster_sizes.values]
             })
             st.dataframe(cluster_df, use_container_width=True)
-        
         with col2:
-            # Pie chart distribusi cluster
             fig, ax = plt.subplots(figsize=(8, 8))
             colors = plt.cm.Set3(np.linspace(0, 1, len(cluster_sizes)))
             wedges, texts, autotexts = ax.pie(cluster_sizes.values, 
@@ -417,95 +391,87 @@ def main():
                                             startangle=90, 
                                             colors=colors,
                                             explode=[0.05] * len(cluster_sizes))
-            
-            # Styling pie chart
             for autotext in autotexts:
                 autotext.set_color('white')
                 autotext.set_fontweight('bold')
                 autotext.set_fontsize(12)
-            
             ax.set_title("Distribusi Pasien per Cluster", fontsize=16, fontweight='bold', pad=20)
             plt.tight_layout()
             st.pyplot(fig)
-        
-        # Karakteristik cluster berdasarkan fitur asli
+        # Karakteristik cluster berdasarkan data terstandarisasi
         st.subheader("🔍 Karakteristik Cluster")
-        
-        # Identify numeric columns from df_encoded for mean calculation
-        numeric_cols_for_mean = df_encoded.select_dtypes(include=[np.number]).columns.tolist()
-        
-        # We need to map the cluster labels back to the df_encoded for this step
-        df_encoded_with_clusters = df_encoded.copy()
-        df_encoded_with_clusters['Cluster'] = cluster_labels
-
-        # Calculate mean for all numeric columns in df_encoded_with_clusters grouped by Cluster
-        cluster_summary = df_encoded_with_clusters.groupby('Cluster')[numeric_cols_for_mean].mean()
-        
-        st.write("**Rata-rata karakteristik per cluster (setelah encoding dan standardisasi):**")
-        st.dataframe(cluster_summary.round(3), use_container_width=True)
-        
-        # Heatmap karakteristik cluster
+        # Hitung mean pada data terstandarisasi
+        try:
+            df_scaled = pd.DataFrame(scaler.transform(df_encoded), columns=df_encoded.columns)
+            df_scaled['Cluster'] = cluster_labels
+            cluster_summary = df_scaled.groupby('Cluster').mean()
+        except Exception as e:
+            st.error(f"Gagal menghitung karakteristik cluster: {e}")
+            cluster_summary = pd.DataFrame()
+        if not cluster_summary.empty:
+            st.write("**Rata-rata karakteristik per cluster (data terstandarisasi):**")
+            st.dataframe(cluster_summary.round(3), use_container_width=True)
+        else:
+            st.warning("Karakteristik cluster tidak dapat dihitung (cluster_summary kosong).")
         st.subheader("🌡️ Heatmap Karakteristik Cluster")
-        
-        fig, ax = plt.subplots(figsize=(12, 6))
-        
-        # Use the cluster_summary (which is already numeric and processed)
-        sns.heatmap(cluster_summary.T, annot=True, cmap='RdYlBu_r', fmt='.3f', cbar_kws={'label': 'Mean Value'}, ax=ax)
-        ax.set_title('Karakteristik Cluster - Heatmap Mean Values', fontsize=14, fontweight='bold')
-        ax.set_xlabel('Cluster', fontweight='bold')
-        ax.set_ylabel('Fitur', fontweight='bold')
-        plt.tight_layout()
-        st.pyplot(fig)
-        
-        # Visualisasi cluster dalam ruang 2D (PCA)
+        if cluster_summary.empty:
+            st.warning("Tidak ada data untuk heatmap karakteristik cluster.")
+        else:
+            cluster_summary_clean = cluster_summary.replace([np.inf, -np.inf], np.nan).fillna(0)
+            fig, ax = plt.subplots(figsize=(12, 6))
+            try:
+                sns.heatmap(cluster_summary_clean.T, annot=True, cmap='RdYlBu_r', fmt='.3f', cbar_kws={'label': 'Mean Value'}, ax=ax)
+                ax.set_title('Karakteristik Cluster - Heatmap Mean Values', fontsize=14, fontweight='bold')
+                ax.set_xlabel('Cluster', fontweight='bold')
+                ax.set_ylabel('Fitur', fontweight='bold')
+                plt.tight_layout()
+                st.pyplot(fig)
+            except ValueError as ve:
+                st.error(f"Gagal menampilkan heatmap: {ve}")
+                st.write(cluster_summary_clean)
+        # Visualisasi cluster dalam ruang 2D
         st.subheader("📈 Visualisasi Cluster (PCA 2D)")
-        
-        # PCA 2D untuk visualisasi
-        pca_2d = PCA(n_components=2)
-        X_pca_2d = pca_2d.fit_transform(X_processed)
-        
-        fig, ax = plt.subplots(figsize=(12, 8))
-        
-        # Scatter plot untuk setiap cluster
-        colors = plt.cm.viridis(np.linspace(0, 1, k_terbaik))
-        for i in range(k_terbaik):
-            mask = cluster_labels == i
-            ax.scatter(X_pca_2d[mask, 0], X_pca_2d[mask, 1], 
-                      c=[colors[i]], label=f'Cluster {i}', alpha=0.6, s=30)
-        
-        # Plot centroids
-        centroids_2d = pca_2d.transform(kmeans.cluster_centers_)
-        ax.scatter(centroids_2d[:, 0], centroids_2d[:, 1],
-                  marker="X", s=300, color="red", label="Centroids", 
-                  edgecolors='black', linewidth=2, zorder=10)
-        
-        ax.set_title("Visualisasi Cluster dengan PCA (2 Komponen Utama)", fontsize=16, fontweight='bold')
-        ax.set_xlabel(f"PC1 ({pca_2d.explained_variance_ratio_[0]:.1%} variance)", fontweight='bold')
-        ax.set_ylabel(f"PC2 ({pca_2d.explained_variance_ratio_[1]:.1%} variance)", fontweight='bold')
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        ax.grid(True, alpha=0.3)
-        plt.tight_layout()
-        st.pyplot(fig)
-        
-        # Insight cluster
+        try:
+            pca_2d = PCA(n_components=2, random_state=42)
+            X_pca_2d = pca_2d.fit_transform(X_processed)
+            fig, ax = plt.subplots(figsize=(12, 8))
+            colors = plt.cm.viridis(np.linspace(0, 1, k_terbaik))
+            for i in range(k_terbaik):
+                mask = cluster_labels == i
+                ax.scatter(X_pca_2d[mask, 0], X_pca_2d[mask, 1], 
+                          c=[colors[i]], label=f'Cluster {i}', alpha=0.6, s=30)
+            centroids_2d = pca_2d.transform(kmeans.cluster_centers_)
+            ax.scatter(centroids_2d[:, 0], centroids_2d[:, 1],
+                      marker="X", s=300, color="red", label="Centroids", 
+                      edgecolors='black', linewidth=2, zorder=10)
+            ax.set_title("Visualisasi Cluster dengan PCA (2 Komponen Utama)", fontsize=16, fontweight='bold')
+            ax.set_xlabel(f"PC1 ({pca_2d.explained_variance_ratio_[0]:.1%} variance)", fontweight='bold')
+            ax.set_ylabel(f"PC2 ({pca_2d.explained_variance_ratio_[1]:.1%} variance)", fontweight='bold')
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax.grid(True, alpha=0.3)
+            plt.tight_layout()
+            st.pyplot(fig)
+        except Exception as e:
+            st.error(f"Gagal melakukan visualisasi PCA 2D: {e}")
         st.subheader("💡 Insight Clustering")
+        sil_score_display = max(silhouette_scores) if not all(np.isnan(silhouette_scores)) else np.nan
         st.markdown(f"""
-        <div class=\"success-box\">
-        <h4>🔍 Analisis Hasil Clustering:</h4>
-        <p>• Dataset berhasil dikelompokkan menjadi <strong>{k_terbaik} cluster</strong> yang berbeda</p>
-        <p>• Setiap cluster menunjukkan pola gejala dan karakteristik yang unik</p>
-        <p>• Silhouette Score <strong>{max(silhouette_scores):.3f}</strong> menunjukkan kualitas pemisahan yang baik</p>
-        <p>• Visualisasi PCA membantu memahami distribusi cluster dalam ruang 2 dimensi</p>
+        <div class=\"success-box\">🔍 Analisis Hasil Clustering:
+        <ul>
+            <li>Dataset berhasil dikelompokkan menjadi <strong>{k_terbaik} cluster</strong> yang berbeda</li>
+            <li>Setiap cluster menunjukkan pola gejala dan karakteristik yang unik</li>
+            <li>Silhouette Score <strong>{sil_score_display:.3f}</strong> menunjukkan kualitas pemisahan yang baik</li>
+            <li>Visualisasi PCA membantu memahami distribusi cluster dalam ruang 2 dimensi</li>
+        </ul>
         </div>
         """, unsafe_allow_html=True)
-    
     # Footer
     st.markdown("---")
     st.markdown("""
-    <div style=\'text-align: center; color: #666; padding: 20px;\'>
+    <div style='text-align: center; color: #666; padding: 20px;'>
         <p>🔬 <strong>Aplikasi Analisis Clustering Monkeypox</strong></p>
-        <p>Dibuat untuk tugas akhir machine learning dengan implementasi K-Means dan Hierarchical Clustering</p>
-        <p><em>Dataset: 25,000 pasien dengan 11 fitur medis</em></p>
+        <p>Dibuat untuk tugas akhir machine learning dengan implementasi K-Means</p>
+        <p><em>Dataset: pasien dengan fitur medis</em></p>
     </div>
     """, unsafe_allow_html=True)
 
