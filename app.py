@@ -1,432 +1,161 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import warnings
-import base64
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
-warnings.filterwarnings("ignore")
-
-# ===================================
-# KONFIGURASI HALAMAN
-# ===================================
+# --- Page Config ---
 st.set_page_config(
-    page_title="🐒 MonkeyPox Clustering Analysis",
-    page_icon="🧬",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Monkeypox Clustering Analysis",
+    page_icon="🦠",
+    layout="wide"
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main { padding-top: 1rem; }
-    .stAlert { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px; }
-    .metric-card { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 1rem; border-radius: 10px; color: white; text-align: center; margin: 0.5rem 0; }
-    .section-header { background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%); padding: 1rem; border-radius: 10px; color: white; text-align: center; margin: 1rem 0; font-size: 1.2rem; font-weight: bold; }
-    .download-section { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); padding: 1.5rem; border-radius: 15px; margin: 1rem 0; }
-    .stTabs [data-baseweb="tab-list"] { gap: 2px; }
-    .stTabs [data-baseweb="tab"] { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px 10px 0 0; }
-    .stTabs [aria-selected="true"] { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-</style>
-""", unsafe_allow_html=True)
+# --- Styles ---
+st.markdown(
+    '''
+    <style>
+    .main { background-color: #f5f5f5; padding: 1rem 2rem; border-radius: 10px; }
+    .sidebar .sidebar-content { background-color: #ffffff; border-radius: 10px; padding: 1rem; }
+    </style>
+    ''',
+    unsafe_allow_html=True
+)
 
-# ===================================
-# UTILITAS
-# ===================================
+# --- Title ---
+st.title("🔬 Monkeypox Clustering Dashboard")
+st.markdown("Analyze clustering patterns in Monkeypox patient data using K-Means and PCA.")
+
+# --- Load Data ---
 @st.cache_data
-def load_sample_data():
-    """Generate sample MonkeyPox dataset untuk demo"""
-    np.random.seed(42)
-    n_samples = 1000
-    data = {
-        'Patient_ID': [f'P{i:04d}' for i in range(1, n_samples + 1)],
-        'Systemic Illness': np.random.choice([0, 1], n_samples, p=[0.3, 0.7]),
-        'Rectal Pain': np.random.choice([0, 1], n_samples, p=[0.6, 0.4]),
-        'Sore Throat': np.random.choice([0, 1], n_samples, p=[0.5, 0.5]),
-        'Penile Oedema': np.random.choice([0, 1], n_samples, p=[0.8, 0.2]),
-        'Oral Lesions': np.random.choice([0, 1], n_samples, p=[0.7, 0.3]),
-        'Solitary Lesion': np.random.choice([0, 1], n_samples, p=[0.6, 0.4]),
-        'Swollen Tonsils': np.random.choice([0, 1], n_samples, p=[0.7, 0.3]),
-        'HIV Infection': np.random.choice([0, 1], n_samples, p=[0.85, 0.15]),
-        'Sexually Transmitted Infection': np.random.choice([0, 1], n_samples, p=[0.75, 0.25]),
-    }
-    risk_score = (
-        data['Systemic Illness'] * 0.3 +
-        data['Oral Lesions'] * 0.4 +
-        data['HIV Infection'] * 0.5 +
-        data['Sexually Transmitted Infection'] * 0.3 +
-        np.random.normal(0, 0.2, n_samples)
-    )
-    data['MonkeyPox'] = ['Positive' if score > 0.5 else 'Negative' for score in risk_score]
-    return pd.DataFrame(data)
+def load_data():
+    df = pd.read_csv("MonkeyPox.csv")
+    return df
 
-def create_download_link(df, filename):
-    """Membuat link download untuk dataset atau results"""
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
-    href = (
-        f'<a href="data:file/csv;base64,{b64}" download="{filename}.csv" '
-        f'style="text-decoration: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
-        f'color: white; padding: 0.5rem 1rem; border-radius: 5px; font-weight: bold;">'
-        f'📥 Download {filename}'
-        f'</a>'
-    )
-    return href
+df = load_data()
 
-def plot_clustering_metrics(k_range, inertia_values, silhouette_scores, k_best):
-    fig = make_subplots(rows=1, cols=2,
-                        subplot_titles=('Elbow Method - Inertia', 'Silhouette Score Analysis'),
-                        specs=[[{"secondary_y": False}, {"secondary_y": False}]])
-    fig.add_trace(go.Scatter(x=list(k_range), y=inertia_values, mode='lines+markers',
-                             name='Inertia', line=dict(color='#4facfe', width=3),
-                             marker=dict(size=8)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=list(k_range), y=silhouette_scores, mode='lines+markers',
-                             name='Silhouette Score', line=dict(color='#f093fb', width=3),
-                             marker=dict(size=8)), row=1, col=2)
-    fig.add_vline(x=k_best, line_dash="dash", line_color="green",
-                  annotation_text=f"Best K={k_best}", row=1, col=2)
-    fig.update_layout(height=400, showlegend=False, title_text="Clustering Optimization Metrics")
-    fig.update_xaxes(title_text="Number of Clusters")
-    fig.update_yaxes(title_text="Inertia", row=1, col=1)
-    fig.update_yaxes(title_text="Silhouette Score", row=1, col=2)
-    return fig
+# --- Sidebar ---
+st.sidebar.header("Pipeline Settings")
+show_raw = st.sidebar.checkbox("Show raw data table", False)
+n_clusters = st.sidebar.slider("Number of Clusters", 2, 7, 4)
+run_btn = st.sidebar.button("Run Clustering")
 
-def plot_pca_results(X_pca, cluster_labels, df, pca_2d):
-    fig = make_subplots(rows=1, cols=2,
-                        subplot_titles=('Clustering Results in PCA Space', 'Original MonkeyPox Status'),
-                        specs=[[{"secondary_y": False}, {"secondary_y": False}]])
-    fig.add_trace(go.Scatter(x=X_pca[:, 0], y=X_pca[:, 1], mode='markers',
-                             marker=dict(color=cluster_labels, colorscale='viridis', size=6),
-                             name='Clusters', text=[f'Cluster {c}' for c in cluster_labels]),
-                  row=1, col=1)
-    colors = ['red' if status == 'Positive' else 'blue' for status in df['MonkeyPox']]
-    fig.add_trace(go.Scatter(x=X_pca[:, 0], y=X_pca[:, 1], mode='markers',
-                             marker=dict(color=colors, size=6),
-                             name='MonkeyPox Status', text=df['MonkeyPox']),
-                  row=1, col=2)
-    explained_var_1 = pca_2d.explained_variance_ratio_[0]
-    explained_var_2 = pca_2d.explained_variance_ratio_[1]
-    fig.update_xaxes(title_text=f"PC1 ({explained_var_1:.1%})", row=1, col=1)
-    fig.update_yaxes(title_text=f"PC2 ({explained_var_2:.1%})", row=1, col=1)
-    fig.update_xaxes(title_text=f"PC1 ({explained_var_1:.1%})", row=1, col=2)
-    fig.update_yaxes(title_text=f"PC2 ({explained_var_2:.1%})", row=1, col=2)
-    fig.update_layout(height=500, showlegend=False)
-    return fig
+# --- Raw Data ---
+if show_raw:
+    st.subheader("Raw Dataset Preview")
+    st.dataframe(df)
 
-# ===================================
-# HEADER
-# ===================================
-st.markdown("""
-<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 15px; text-align: center; margin-bottom: 2rem;">
-    <h1 style="color: white; margin: 0; font-size: 2.5rem;">🐒 MonkeyPox Clustering Analysis</h1>
-    <p style="color: white; margin: 0.5rem 0 0 0; font-size: 1.2rem;">Analisis Klaster MonkeyPox dengan Machine Learning</p>
-</div>
-""", unsafe_allow_html=True)
-
-# ===================================
-# SIDEBAR: Upload & Parameter
-# ===================================
-with st.sidebar:
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 1rem; border-radius: 10px; text-align: center; margin-bottom: 1rem;">
-        <h3 style="color: white; margin: 0;">🛠️ Controls</h3>
-    </div>
-    """, unsafe_allow_html=True)
-    # Upload dataset
-    st.markdown("### 📥 Upload Dataset MonkeyPox")
-    uploaded_file = st.file_uploader(
-        "Upload CSV MonkeyPox",
-        type=['csv'],
-        help="Pastikan file memiliki kolom Patient_ID dan MonkeyPox"
-    )
-    st.markdown("---")
-    # Parameter clustering
-    min_clusters = st.slider("Minimum clusters", 2, 5, 2)
-    max_clusters = st.slider("Maximum clusters", 6, 10, 8)
-    pca_components = st.slider("PCA components (variance %)", 80, 99, 95)
-    st.markdown("---")
-    with st.expander("ℹ️ About This App"):
-        st.markdown("""
-        **Features:**
-        - 🔍 K-Means Clustering Analysis
-        - 📈 PCA Dimensionality Reduction
-        - 📊 Interactive Visualizations
-        - 📥 Dataset Download Options
-        - 🎯 Clustering Optimization
-        
-        **Developer:** AI Assistant
-        """, unsafe_allow_html=True)
-
-# ===================================
-# LOAD DATASET
-# ===================================
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file)
-        st.success("✅ Dataset diupload berhasil!")
-        # Tampilkan tombol download dataset yang diupload
-        st.markdown("### 📂 Download Dataset Anda")
-        st.markdown(create_download_link(df, "Uploaded_MonkeyPox_Dataset"), unsafe_allow_html=True)
-        # Preview dataset
-        st.markdown("### 🔍 Preview Dataset Anda")
-        st.dataframe(df.head(10), use_container_width=True)
-    except Exception as e:
-        st.error(f"❌ Error saat memuat dataset: {e}")
-        st.info("Menggunakan sample dataset")
-        df = load_sample_data()
-else:
-    st.info("📊 Belum ada dataset diupload. Menggunakan sample dataset.")
-    df = load_sample_data()
-    # Tombol download sample
-    st.markdown("### 📂 Download Sample Dataset")
-    st.markdown(create_download_link(df, "MonkeyPox_Sample_Dataset"), unsafe_allow_html=True)
-    if st.button("🔍 Preview Sample Data"):
-        st.dataframe(df.head(10), use_container_width=True)
-
-# ===================================
-# OVERVIEW METRIK
-# ===================================
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.markdown(f"""
-    <div class="metric-card">
-        <h3>👥 Total Patients</h3>
-        <h2>{df.shape[0]}</h2>
-    </div>
-    """, unsafe_allow_html=True)
-with col2:
-    st.markdown(f"""
-    <div class="metric-card">
-        <h3>📊 Features</h3>
-        <h2>{df.shape[1] - 2 if 'MonkeyPox' in df.columns and 'Patient_ID' in df.columns else df.shape[1]}</h2>
-    </div>
-    """, unsafe_allow_html=True)
-with col3:
-    if 'MonkeyPox' in df.columns:
-        positive_cases = (df['MonkeyPox'] == 'Positive').sum()
+# Preprocessing
+@st.cache_data
+def preprocess(df):
+    df_f = df.drop(columns=["Patient_ID", "MonkeyPox"])
+    # fill and encode
+    objs = df_f.select_dtypes(include=[object]).columns
+    if len(objs) > 0:
+        for col in objs:
+            df_f[col] = df_f[col].fillna(df_f[col].mode()[0])
+        df_enc = pd.get_dummies(df_f, columns=objs)
     else:
-        positive_cases = 0
-    st.markdown(f"""
-    <div class="metric-card">
-        <h3>🔴 Positive Cases</h3>
-        <h2>{positive_cases}</h2>
-    </div>
-    """, unsafe_allow_html=True)
-with col4:
-    if 'MonkeyPox' in df.columns:
-        positive_rate = (positive_cases / len(df)) * 100
-    else:
-        positive_rate = 0
-    st.markdown(f"""
-    <div class="metric-card">
-        <h3>📈 Positive Rate</h3>
-        <h2>{positive_rate:.1f}%</h2>
-    </div>
-    """, unsafe_allow_html=True)
+        df_enc = df_f.copy()
+    scaler = StandardScaler()
+    Xs = scaler.fit_transform(df_enc)
+    return Xs, df_enc
 
-# ===================================
-# CEK KOLom Patient_ID dan MonkeyPox
-# ===================================
-required_cols = ['Patient_ID', 'MonkeyPox']
-if not all(col in df.columns for col in required_cols):
-    st.error(f"Dataset harus memiliki kolom: {required_cols}. Ditemukan: {list(df.columns)}")
-    st.stop()
+X_scaled, df_encoded = preprocess(df)
 
-# ===================================
-# PREPROCESSING & CLUSTERING
-# ===================================
-# Drop kolom non-fitur
-df_features = df.drop(columns=["Patient_ID", "MonkeyPox"], errors='ignore')
-# Jika kolom lain non-numerik, lakukan encoding
-categorical_cols = df_features.select_dtypes(include=["object"]).columns
-if len(categorical_cols) > 0:
-    df_encoded = pd.get_dummies(df_features, columns=categorical_cols)
+# Dimensionality Reduction for visuals
+@st.cache_data
+def apply_pca(X, n=0.95):
+    pca = PCA(n_components=n)
+    X_p = pca.fit_transform(X)
+    return pca, X_p
+
+pca_full, X_pca_full = apply_pca(X_scaled)
+st.sidebar.markdown(f"Explained Variance (95% PCA): {sum(pca_full.explained_variance_ratio_):.1%}")
+
+# Clustering Execution
+if run_btn:
+    # 1. Find best k automatically
+    scores = {}
+    for k in range(2, 8):
+        km = KMeans(n_clusters=k, random_state=42, n_init=10)
+        lbl = km.fit_predict(X_pca_full)
+        scores[k] = silhouette_score(X_pca_full, lbl)
+    best_k = max(scores, key=scores.get)
+
+    st.subheader("🎯 Optimal Number of Clusters")
+    st.write(f"Best k by silhouette: **{best_k}** (Score: {scores[best_k]:.3f})")
+
+    # 2. Final Clustering
+    km_final = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = km_final.fit_predict(X_pca_full)
+    df["Cluster"] = labels
+
+    # Distribution Plot
+    st.subheader("📊 Cluster Distribution")
+    fig, ax = plt.subplots()
+    sns.countplot(x=labels, hue=df["MonkeyPox"], palette="Set2", ax=ax)
+    ax.set_xlabel("Cluster")
+    ax.set_ylabel("Count")
+    ax.set_title("Patient Distribution per Cluster")
+    st.pyplot(fig)
+
+    # Elbow & Silhouette
+    st.subheader("📈 Elbow & Silhouette Charts")
+    inertia_vals, sil_vals = [], []
+    ks = list(scores.keys())
+    for k in ks:
+        km = KMeans(n_clusters=k, random_state=42, n_init=10)
+        inertia_vals.append(km.fit(X_pca_full).inertia_)
+        sil_vals.append(scores[k])
+
+    fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+    ax1.plot(ks, inertia_vals, 'bo-', linewidth=2)
+    ax1.set_xlabel("k")
+    ax1.set_ylabel("Inertia")
+    ax1.set_title("Elbow Method")
+    ax2.plot(ks, sil_vals, 'ro-', linewidth=2)
+    ax2.axvline(x=n_clusters, color='green', linestyle='--')
+    ax2.set_xlabel("k")
+    ax2.set_ylabel("Silhouette Score")
+    ax2.set_title("Silhouette Scores")
+    st.pyplot(fig2)
+
+    # PCA 2D Visualization
+    st.subheader("🔍 2D PCA Clustering View")
+    pca2, X2d = PCA(n_components=2).fit_transform(X_scaled), None
+    # reuse pca2 incorrectly? Let's compute properly
+    pca2 = PCA(n_components=2)
+    X2d = pca2.fit_transform(X_scaled)
+    km2 = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    lbl2 = km2.fit_predict(X2d)
+
+    fig3, ax3 = plt.subplots()
+    scatter = ax3.scatter(X2d[:, 0], X2d[:, 1], c=lbl2, cmap='viridis', alpha=0.7)
+    ax3.set_xlabel("PC1")
+    ax3.set_ylabel("PC2")
+    ax3.set_title("Clusters in PCA Space")
+    st.pyplot(fig3)
+
+    # Feature Importance Heatmap
+    st.subheader("🌡️ Feature Importance per Cluster")
+    df_enc = df_encoded.copy()
+    df_enc['Cluster'] = labels
+    cluster_means = df_enc.groupby('Cluster').mean().T
+    top_feats = cluster_means.apply(lambda col: col.nlargest(3).index.tolist(), axis=0)
+    selected = sorted({f for col in top_feats for f in top_feats[col]})[:8]
+    fig4, ax4 = plt.subplots(figsize=(8, 6))
+    sns.heatmap(cluster_means.loc[selected], annot=True, fmt='.2f', cmap='RdBu_r', center=0, ax=ax4)
+    ax4.set_title("Standardized Feature Means by Cluster")
+    st.pyplot(fig4)
+
 else:
-    df_encoded = df_features.copy()
+    st.info("Configure parameters in the sidebar and click 'Run Clustering' to start analysis.")
 
-# Standardize
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(df_encoded)
-
-# PCA preprocessing
-pca = PCA(n_components=pca_components/100)
-X_processed = pca.fit_transform(X_scaled)
-explained_variance = pca.explained_variance_ratio_.sum()
-
-# Cari k optimal
-k_range = range(min_clusters, max_clusters + 1)
-inertia_values, silhouette_scores = [], []
-for k in k_range:
-    km = KMeans(n_clusters=k, random_state=42, n_init=10)
-    labels = km.fit_predict(X_processed)
-    inertia_values.append(km.inertia_)
-    silhouette_scores.append(silhouette_score(X_processed, labels))
-
-k_best = k_range[np.argmax(silhouette_scores)]
-best_score = max(silhouette_scores)
-
-# Final clustering
-kmeans_final = KMeans(n_clusters=k_best, random_state=42, n_init=10)
-cluster_labels = kmeans_final.fit_predict(X_processed)
-
-# PCA 2D untuk visual
-pca_2d = PCA(n_components=2)
-X_pca = pca_2d.fit_transform(X_scaled)
-df_viz = df.copy()
-df_viz['Cluster'] = cluster_labels
-
-# ===================================
-# TABS UNTUK ANALISIS
-# ===================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📋 Data Overview",
-    "🎯 Clustering Analysis",
-    "📊 PCA Visualization",
-    "📈 Results Analysis",
-    "🔍 Feature Importance"
-])
-
-with tab1:
-    st.markdown("### 📊 Dataset Overview")
-    st.dataframe(df.head(10), use_container_width=True)
-    st.markdown("### 📈 MonkeyPox Distribution")
-    status_counts = df['MonkeyPox'].value_counts()
-    fig = px.pie(
-        values=status_counts.values,
-        names=status_counts.index,
-        color_discrete_sequence=['#ff7f7f', '#87ceeb'],
-        title="Distribution of MonkeyPox Cases"
-    )
-    fig.update_traces(textposition='inside', textinfo='percent+label')
-    st.plotly_chart(fig, use_container_width=True)
-    st.markdown("### 📊 Data Statistics")
-    st.dataframe(df.describe(), use_container_width=True)
-
-with tab2:
-    st.markdown("### 🎯 K-Means Clustering Analysis")
-    st.info(f"🔄 Data processed: {X_processed.shape[1]} components explaining {explained_variance:.1%} of variance")
-    st.success(f"🏆 Optimal number of clusters: **{k_best}** (Silhouette Score: {best_score:.3f})")
-    fig_metrics = plot_clustering_metrics(k_range, inertia_values, silhouette_scores, k_best)
-    st.plotly_chart(fig_metrics, use_container_width=True)
-
-with tab3:
-    st.markdown("### 📊 PCA Visualization")
-    fig_pca = plot_pca_results(X_pca, cluster_labels, df_viz, pca_2d)
-    st.plotly_chart(fig_pca, use_container_width=True)
-    st.markdown("### 🎯 Cluster Distribution")
-    col1, col2 = st.columns(2)
-    with col1:
-        cluster_dist = pd.Series(cluster_labels).value_counts().sort_index()
-        fig_cluster = px.bar(
-            x=cluster_dist.index,
-            y=cluster_dist.values,
-            labels={'x': 'Cluster', 'y': 'Number of Patients'},
-            title="Patients per Cluster",
-            color=cluster_dist.values,
-            color_continuous_scale='viridis'
-        )
-        st.plotly_chart(fig_cluster, use_container_width=True)
-    with col2:
-        crosstab = pd.crosstab(df_viz['Cluster'], df_viz['MonkeyPox'])
-        fig_cross = px.bar(
-            crosstab,
-            barmode='group',
-            title="MonkeyPox Status by Cluster",
-            labels={'value': 'Count', 'index': 'Cluster'}
-        )
-        st.plotly_chart(fig_cross, use_container_width=True)
-
-with tab4:
-    st.markdown("### 📈 Clustering Results Analysis")
-    final_sil = silhouette_score(X_processed, cluster_labels)
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("🎯 Silhouette Score", f"{final_sil:.3f}")
-    with col2:
-        st.metric("🔢 Number of Clusters", k_best)
-    with col3:
-        st.metric("📊 Features Used", X_processed.shape[1])
-    st.markdown("### 🔍 Detailed Cluster Analysis")
-    crosstab_detailed = pd.crosstab(df_viz['Cluster'], df_viz['MonkeyPox'], margins=True)
-    st.dataframe(crosstab_detailed, use_container_width=True)
-    st.markdown("### 📊 Percentage Distribution")
-    crosstab_pct = pd.crosstab(df_viz['Cluster'], df_viz['MonkeyPox'], normalize='index') * 100
-    st.dataframe(crosstab_pct.round(1), use_container_width=True)
-
-with tab5:
-    st.markdown("### 🔍 Feature Importance Analysis")
-    feature_cluster = df_encoded.copy()
-    feature_cluster['Cluster'] = cluster_labels
-    cluster_means = feature_cluster.groupby('Cluster').mean()
-    overall_mean = df_encoded.mean()
-    for cluster_id in range(k_best):
-        with st.expander(f"🎯 Cluster {cluster_id} Analysis"):
-            cluster_mean = cluster_means.loc[cluster_id]
-            diffs = np.abs(cluster_mean - overall_mean)
-            top_feats = diffs.nlargest(5)
-            comp = []
-            for feat in top_feats.index:
-                comp.append({
-                    'Feature': feat,
-                    'Cluster Mean': f"{cluster_mean[feat]:.3f}",
-                    'Overall Mean': f"{overall_mean[feat]:.3f}",
-                    'Difference': f"{diffs[feat]:.3f}"
-                })
-            comp_df = pd.DataFrame(comp)
-            st.dataframe(comp_df, use_container_width=True)
-            fig_imp = px.bar(
-                x=top_feats.values,
-                y=top_feats.index,
-                orientation='h',
-                title=f"Top Features untuk Cluster {cluster_id}",
-                labels={'x': 'Difference from Overall Mean', 'y': 'Features'}
-            )
-            fig_imp.update_layout(height=300)
-            st.plotly_chart(fig_imp, use_container_width=True)
-
-# ===================================
-# DOWNLOAD RESULTS
-# ===================================
-st.markdown("""
-<div class="section-header">
-    📥 Download Analysis Results
-</div>
-""", unsafe_allow_html=True)
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    res_df = df.copy()
-    res_df['Cluster'] = cluster_labels
-    st.markdown(create_download_link(res_df, "MonkeyPox_Clustering_Results"), unsafe_allow_html=True)
-with col2:
-    sum_df = pd.crosstab(res_df['Cluster'], res_df['MonkeyPox'])
-    sum_df_reset = sum_df.reset_index()
-    st.markdown(create_download_link(sum_df_reset, "Cluster_Summary"), unsafe_allow_html=True)
-with col3:
-    imp_data = []
-    for cid in range(k_best):
-        cm = cluster_means.loc[cid]
-        diffs = np.abs(cm - overall_mean)
-        top3 = diffs.nlargest(3)
-        for feat, diff in top3.items():
-            imp_data.append({'Cluster': cid, 'Feature': feat, 'Importance': diff})
-    imp_df = pd.DataFrame(imp_data)
-    st.markdown(create_download_link(imp_df, "Feature_Importance"), unsafe_allow_html=True)
-
-# ===================================
-# FOOTER
-# ===================================
+# Footer
 st.markdown("---")
-st.markdown("""
-<div style="text-align: center; color: #666; padding: 2rem;">
-    <p>🧬 MonkeyPox Clustering Analysis | Powered by Streamlit & Machine Learning</p>
-    <p>Built with ❤️ for Healthcare Data Analysis</p>
-</div>
-""", unsafe_allow_html=True)
+st.markdown("&copy; 2025 Monkeypox Clustering Dashboard")
