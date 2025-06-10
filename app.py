@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 import warnings
 import io
 import base64
@@ -230,7 +229,6 @@ with st.sidebar:
     st.markdown("---")
     
     # Analysis parameters
-    st.markdown("### ⚙️ Analysis Parameters")
     min_clusters = st.slider("Minimum clusters", 2, 5, 2)
     max_clusters = st.slider("Maximum clusters", 6, 10, 8)
     pca_components = st.slider("PCA components (variance %)", 80, 99, 95)
@@ -248,10 +246,10 @@ with st.sidebar:
         - 🎯 Clustering Optimization
         
         **Developer:** AI Assistant
-        """)
+        """, unsafe_allow_html=True)
 
 # ===================================
-# DATASET DOWNLOAD SECTION
+# DATA LOADING DAN PREPROCESSING
 # ===================================
 st.markdown("""
 <div class="section-header">
@@ -259,9 +257,27 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# Load or sample data
+if 'df' not in st.session_state:
+    # Load once
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.success("✅ Custom dataset loaded successfully!")
+        except Exception as e:
+            st.error(f"❌ Error loading file: {str(e)}")
+            df = load_sample_data()
+            st.info("🔄 Using sample dataset instead.")
+    else:
+        df = load_sample_data()
+        st.info("📊 Using sample dataset for demonstration.")
+    st.session_state.df = df
+else:
+    df = st.session_state.df
+
+# Dataset download & preview
 with st.container():
     col1, col2, col3 = st.columns([1, 2, 1])
-    
     with col2:
         st.markdown("""
         <div class="download-section">
@@ -272,81 +288,93 @@ with st.container():
             </p>
         </div>
         """, unsafe_allow_html=True)
-        
-        # Generate and provide download for sample dataset
         sample_df = load_sample_data()
-        
         col_a, col_b = st.columns(2)
         with col_a:
-            st.markdown(create_download_link(sample_df, "MonkeyPox_Sample_Dataset"), 
-                       unsafe_allow_html=True)
-        
+            st.markdown(create_download_link(sample_df, "MonkeyPox_Sample_Dataset"), unsafe_allow_html=True)
         with col_b:
             if st.button("🔍 Preview Sample Data", type="secondary"):
                 st.dataframe(sample_df.head(), use_container_width=True)
 
-# ===================================
-# DATA LOADING DAN PREPROCESSING
-# ===================================
-st.markdown("""
-<div class="section-header">
-    🔬 Data Analysis Pipeline
-</div>
-""", unsafe_allow_html=True)
-
-# Load data
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file)
-        st.success("✅ Custom dataset loaded successfully!")
-    except Exception as e:
-        st.error(f"❌ Error loading file: {str(e)}")
-        df = load_sample_data()
-        st.info("🔄 Using sample dataset instead.")
-else:
-    df = load_sample_data()
-    st.info("📊 Using sample dataset for demonstration.")
-
-# Data overview
+# Overview metrics
 col1, col2, col3, col4 = st.columns(4)
-
 with col1:
-    st.markdown("""
+    st.markdown(f"""
     <div class="metric-card">
         <h3>👥 Total Patients</h3>
-        <h2>{}</h2>
+        <h2>{df.shape[0]}</h2>
     </div>
-    """.format(df.shape[0]), unsafe_allow_html=True)
-
+    """, unsafe_allow_html=True)
 with col2:
-    st.markdown("""
+    st.markdown(f"""
     <div class="metric-card">
         <h3>📊 Features</h3>
-        <h2>{}</h2>
+        <h2>{df.shape[1] - 2}</h2>
     </div>
-    """.format(df.shape[1] - 2), unsafe_allow_html=True)
-
+    """, unsafe_allow_html=True)
 with col3:
     positive_cases = (df['MonkeyPox'] == 'Positive').sum()
-    st.markdown("""
+    st.markdown(f"""
     <div class="metric-card">
         <h3>🔴 Positive Cases</h3>
-        <h2>{}</h2>
+        <h2>{positive_cases}</h2>
     </div>
-    """.format(positive_cases), unsafe_allow_html=True)
-
+    """, unsafe_allow_html=True)
 with col4:
     positive_rate = (positive_cases / len(df)) * 100
-    st.markdown("""
+    st.markdown(f"""
     <div class="metric-card">
         <h3>📈 Positive Rate</h3>
-        <h2>{:.1f}%</h2>
+        <h2>{positive_rate:.1f}%</h2>
     </div>
-    """.format(positive_rate), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# ===================================
+# ================================
+# PREPROCESSING untuk clustering
+# ================================
+df_features = df.drop(columns=["Patient_ID", "MonkeyPox"])
+categorical_cols = df_features.select_dtypes(include=["object"]).columns
+if len(categorical_cols) > 0:
+    df_encoded = pd.get_dummies(df_features, columns=categorical_cols)
+else:
+    df_encoded = df_features.copy()
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(df_encoded)
+
+# PCA untuk preprocessing
+pca = PCA(n_components=pca_components/100)
+X_processed = pca.fit_transform(X_scaled)
+explained_variance = pca.explained_variance_ratio_.sum()
+
+# Cari optimal k
+k_range = range(min_clusters, max_clusters + 1)
+inertia_values = []
+silhouette_scores = []
+for k in k_range:
+    kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(X_processed)
+    inertia_values.append(kmeans.inertia_)
+    silhouette_scores.append(silhouette_score(X_processed, labels))
+# Tentukan best k
+k_best = k_range[np.argmax(silhouette_scores)]
+best_score = max(silhouette_scores)
+
+# Final clustering dengan k_best
+kmeans_final = KMeans(n_clusters=k_best, random_state=42, n_init=10)
+cluster_labels = kmeans_final.fit_predict(X_processed)
+
+# PCA 2D untuk visualisasi
+pca_2d = PCA(n_components=2)
+X_pca = pca_2d.fit_transform(X_scaled)
+
+# Prepare df_viz
+df_viz = df.copy()
+df_viz['Cluster'] = cluster_labels
+
+# ================================
 # TABS UNTUK ANALISIS
-# ===================================
+# ================================
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📋 Data Overview", 
     "🎯 Clustering Analysis", 
@@ -357,113 +385,42 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
 with tab1:
     st.markdown("### 📊 Dataset Overview")
-    
     col1, col2 = st.columns([2, 1])
-    
     with col1:
         st.dataframe(df.head(10), use_container_width=True)
-    
     with col2:
         st.markdown("### 📈 MonkeyPox Distribution")
         status_counts = df['MonkeyPox'].value_counts()
-        
         fig = px.pie(values=status_counts.values, names=status_counts.index,
-                    color_discrete_sequence=['#ff7f7f', '#87ceeb'],
-                    title="Distribution of MonkeyPox Cases")
+                     color_discrete_sequence=['#ff7f7f', '#87ceeb'],
+                     title="Distribution of MonkeyPox Cases")
         fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
-    
-    # Data statistics
     st.markdown("### 📊 Data Statistics")
     st.dataframe(df.describe(), use_container_width=True)
 
 with tab2:
     st.markdown("### 🎯 K-Means Clustering Analysis")
-    
-    # Prepare data for clustering
-    df_features = df.drop(columns=["Patient_ID", "MonkeyPox"])
-    
-    # Handle categorical columns
-    categorical_cols = df_features.select_dtypes(include=["object"]).columns
-    if len(categorical_cols) > 0:
-        df_encoded = pd.get_dummies(df_features, columns=categorical_cols)
-    else:
-        df_encoded = df_features.copy()
-    
-    # Standardization
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(df_encoded)
-    
-    # PCA
-    pca = PCA(n_components=pca_components/100)
-    X_processed = pca.fit_transform(X_scaled)
-    
-    st.info(f"🔄 Data processed: {X_processed.shape[1]} components explaining {pca.explained_variance_ratio_.sum():.1%} of variance")
-    
-    # Find optimal number of clusters
-    with st.spinner("🔍 Finding optimal number of clusters..."):
-        k_range = range(min_clusters, max_clusters + 1)
-        inertia_values = []
-        silhouette_scores = []
-        
-        progress_bar = st.progress(0)
-        
-        for i, k in enumerate(k_range):
-            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-            labels = kmeans.fit_predict(X_processed)
-            
-            inertia_values.append(kmeans.inertia_)
-            silhouette_scores.append(silhouette_score(X_processed, labels))
-            
-            progress_bar.progress((i + 1) / len(k_range))
-        
-        progress_bar.empty()
-    
-    # Find best k
-    k_best = k_range[np.argmax(silhouette_scores)]
-    best_score = max(silhouette_scores)
-    
+    st.info(f"🔄 Data processed: {X_processed.shape[1]} components explaining {explained_variance:.1%} of variance")
     st.success(f"🏆 Optimal number of clusters: **{k_best}** (Silhouette Score: {best_score:.3f})")
-    
-    # Plot metrics
     fig_metrics = plot_clustering_metrics(k_range, inertia_values, silhouette_scores, k_best)
     st.plotly_chart(fig_metrics, use_container_width=True)
 
 with tab3:
     st.markdown("### 📊 PCA Visualization")
-    
-    # Perform final clustering
-    kmeans_final = KMeans(n_clusters=k_best, random_state=42, n_init=10)
-    cluster_labels = kmeans_final.fit_predict(X_processed)
-    
-    # PCA for visualization
-    pca_2d = PCA(n_components=2)
-    X_pca = pca_2d.fit_transform(X_scaled)
-    
-    # Add cluster labels to dataframe
-    df_viz = df.copy()
-    df_viz['Cluster'] = cluster_labels
-    
-    # Plot PCA results
     fig_pca = plot_pca_results(X_pca, cluster_labels, df_viz, pca_2d)
     st.plotly_chart(fig_pca, use_container_width=True)
-    
-    # Cluster distribution
     st.markdown("### 🎯 Cluster Distribution")
-    
     col1, col2 = st.columns(2)
-    
     with col1:
         cluster_dist = pd.Series(cluster_labels).value_counts().sort_index()
         fig_cluster = px.bar(x=cluster_dist.index, y=cluster_dist.values,
-                           labels={'x': 'Cluster', 'y': 'Number of Patients'},
-                           title="Patients per Cluster",
-                           color=cluster_dist.values,
-                           color_continuous_scale='viridis')
+                             labels={'x': 'Cluster', 'y': 'Number of Patients'},
+                             title="Patients per Cluster",
+                             color=cluster_dist.values,
+                             color_continuous_scale='viridis')
         st.plotly_chart(fig_cluster, use_container_width=True)
-    
     with col2:
-        # Cross-tabulation
         crosstab = pd.crosstab(df_viz['Cluster'], df_viz['MonkeyPox'])
         fig_cross = px.bar(crosstab, barmode='group',
                           title="MonkeyPox Status by Cluster",
@@ -472,51 +429,33 @@ with tab3:
 
 with tab4:
     st.markdown("### 📈 Clustering Results Analysis")
-    
-    # Silhouette analysis
     final_silhouette = silhouette_score(X_processed, cluster_labels)
-    
     col1, col2, col3 = st.columns(3)
-    
     with col1:
         st.metric("🎯 Silhouette Score", f"{final_silhouette:.3f}")
     with col2:
         st.metric("🔢 Number of Clusters", k_best)
     with col3:
         st.metric("📊 Features Used", X_processed.shape[1])
-    
-    # Detailed cluster analysis
     st.markdown("### 🔍 Detailed Cluster Analysis")
-    
-    # Cross-tabulation table
     crosstab_detailed = pd.crosstab(df_viz['Cluster'], df_viz['MonkeyPox'], margins=True)
     st.dataframe(crosstab_detailed, use_container_width=True)
-    
-    # Percentage table
     st.markdown("### 📊 Percentage Distribution")
     crosstab_pct = pd.crosstab(df_viz['Cluster'], df_viz['MonkeyPox'], normalize='index') * 100
     st.dataframe(crosstab_pct.round(1), use_container_width=True)
 
 with tab5:
     st.markdown("### 🔍 Feature Importance Analysis")
-    
-    # Calculate feature importance
     feature_cluster = df_encoded.copy()
     feature_cluster['Cluster'] = cluster_labels
-    
     cluster_means = feature_cluster.groupby('Cluster').mean()
     overall_mean = df_encoded.mean()
-    
-    # Find important features for each cluster
     st.markdown("### 📋 Most Distinguishing Features per Cluster")
-    
     for cluster_id in range(k_best):
         with st.expander(f"🎯 Cluster {cluster_id} Analysis"):
             cluster_mean = cluster_means.loc[cluster_id]
             differences = np.abs(cluster_mean - overall_mean)
             top_features = differences.nlargest(5)
-            
-            # Create a comparison table
             comparison_data = []
             for feature in top_features.index:
                 comparison_data.append({
@@ -525,16 +464,13 @@ with tab5:
                     'Overall Mean': f"{overall_mean[feature]:.3f}",
                     'Difference': f"{differences[feature]:.3f}"
                 })
-            
             comparison_df = pd.DataFrame(comparison_data)
             st.dataframe(comparison_df, use_container_width=True)
-            
-            # Visualization
             fig_importance = px.bar(
                 x=top_features.values,
                 y=top_features.index,
                 orientation='h',
-                title=f"Top Features for Cluster {cluster_id}",
+                title=f"Top Features untuk Cluster {cluster_id}",
                 labels={'x': 'Difference from Overall Mean', 'y': 'Features'}
             )
             fig_importance.update_layout(height=300)
@@ -550,37 +486,29 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
-
 with col1:
-    # Results dataframe
     results_df = df.copy()
     results_df['Cluster'] = cluster_labels
-    st.markdown(create_download_link(results_df, "MonkeyPox_Clustering_Results"), 
-               unsafe_allow_html=True)
-
+    st.markdown(create_download_link(results_df, "MonkeyPox_Clustering_Results"), unsafe_allow_html=True)
 with col2:
-    # Cluster summary
     summary_df = pd.crosstab(results_df['Cluster'], results_df['MonkeyPox'])
-    st.markdown(create_download_link(summary_df, "Cluster_Summary"), 
-               unsafe_allow_html=True)
-
+    # Agar download CSV: convert crosstab ke DataFrame biasa
+    summary_df_reset = summary_df.reset_index()
+    st.markdown(create_download_link(summary_df_reset, "Cluster_Summary"), unsafe_allow_html=True)
 with col3:
-    # Feature importance
     importance_data = []
     for cluster_id in range(k_best):
         cluster_mean = cluster_means.loc[cluster_id]
         differences = np.abs(cluster_mean - overall_mean)
-        top_features = differences.nlargest(3)
-        for feature, diff in top_features.items():
+        top3 = differences.nlargest(3)
+        for feature, diff in top3.items():
             importance_data.append({
                 'Cluster': cluster_id,
                 'Feature': feature,
                 'Importance': diff
             })
-    
     importance_df = pd.DataFrame(importance_data)
-    st.markdown(create_download_link(importance_df, "Feature_Importance"), 
-               unsafe_allow_html=True)
+    st.markdown(create_download_link(importance_df, "Feature_Importance"), unsafe_allow_html=True)
 
 # ===================================
 # FOOTER
