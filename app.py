@@ -7,9 +7,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
-from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 import warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 # --- Konfigurasi Halaman Streamlit ---
 st.set_page_config(
@@ -61,10 +60,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<h1 class="main-header">🔬 ANALISIS CLUSTERING MONKEYPOX</h1>', unsafe_allow_html=True)
+st.markdown("<h1 class=\"main-header\">🔬 ANALISIS CLUSTERING MONKEYPOX</h1>", unsafe_allow_html=True)
 st.markdown("---")
 
-# --- Fungsi untuk memuat data --- 
+# --- Fungsi untuk memuat data ---
 @st.cache_data
 def load_data():
     """Memuat dataset MonkeyPox dari file CSV"""
@@ -90,7 +89,6 @@ def preprocess_data(df):
     
     # Melihat jenis data
     kolom_kategori = df_fitur.select_dtypes(include=["object"]).columns
-    kolom_numerik = df_fitur.select_dtypes(include=[np.number]).columns
     
     # Mengubah data kategori menjadi angka
     if len(kolom_kategori) > 0:
@@ -157,8 +155,7 @@ def main():
         "🛠️ Data Preprocessing", 
         "🎯 Optimasi Cluster", 
         "📈 Visualisasi Pemilihan", 
-        "✨ Hasil Clustering",
-        "🌳 Hierarchical Clustering"
+        "✨ Hasil Clustering"
     ]
     selected_section = st.sidebar.radio("Pilih Bagian:", sections)
     
@@ -167,16 +164,16 @@ def main():
     
     # BAGIAN 1: DATA OVERVIEW
     if selected_section == "📊 Data Overview":
-        st.markdown('<h2 class="section-header">📊 LANGKAH 1: MEMUAT DATA</h2>', unsafe_allow_html=True)
+        st.markdown("<h2 class=\"section-header\">📊 LANGKAH 1: MEMUAT DATA</h2>", unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.markdown('<div class="metric-card"><h3>Jumlah Pasien</h3><h2 style="color: #1f77b4;">25,000</h2></div>', unsafe_allow_html=True)
+            st.markdown("<div class=\"metric-card\"><h3>Jumlah Pasien</h3><h2 style=\"color: #1f77b4;\">25,000</h2></div>", unsafe_allow_html=True)
         with col2:
-            st.markdown('<div class="metric-card"><h3>Jumlah Kolom</h3><h2 style="color: #ff7f0e;">11</h2></div>', unsafe_allow_html=True)
+            st.markdown("<div class=\"metric-card\"><h3>Jumlah Kolom</h3><h2 style=\"color: #ff7f0e;\">11</h2></div>", unsafe_allow_html=True)
         with col3:
             data_hilang = df.isnull().sum().sum()
-            st.markdown(f'<div class="metric-card"><h3>Data Hilang</h3><h2 style="color: #d62728;">{data_hilang:,}</h2></div>', unsafe_allow_html=True)
+            st.markdown(f"<div class=\"metric-card\"><h3>Data Hilang</h3><h2 style=\"color: #d62728;\">{data_hilang:,}</h2></div>", unsafe_allow_html=True)
         
         st.subheader("🔍 Preview Dataset")
         st.write("Berikut adalah 5 baris pertama dari dataset Monkeypox:")
@@ -196,7 +193,7 @@ def main():
             
             # Membuat bar chart yang menarik
             fig, ax = plt.subplots(figsize=(8, 6))
-            colors = ['#ff7f0e', '#1f77b4']
+            colors = ["#ff7f0e", "#1f77b4"]
             bars = ax.bar(kasus.index, kasus.values, color=colors, alpha=0.8, edgecolor='black', linewidth=1.2)
             
             # Menambahkan label pada bar
@@ -215,13 +212,13 @@ def main():
         
         # Status data hilang
         if data_hilang == 0:
-            st.markdown('<div class="success-box">✅ <strong>Bagus!</strong> Tidak ada data yang hilang.</div>', unsafe_allow_html=True)
+            st.markdown("<div class=\"success-box\">✅ <strong>Bagus!</strong> Tidak ada data yang hilang.</div>", unsafe_allow_html=True)
         else:
-            st.markdown(f'<div class="warning-box">⚠️ <strong>Perhatian!</strong> Ada {data_hilang:,} data yang hilang, perlu dibersihkan.</div>', unsafe_allow_html=True)
+            st.markdown(f"<div class=\"warning-box\">⚠️ <strong>Perhatian!</strong> Ada {data_hilang:,} data yang hilang, perlu dibersihkan.</div>", unsafe_allow_html=True)
     
     # BAGIAN 2: DATA PREPROCESSING
     elif selected_section == "🛠️ Data Preprocessing":
-        st.markdown('<h2 class="section-header">🛠️ LANGKAH 2: MENYIAPKAN DATA</h2>', unsafe_allow_html=True)
+        st.markdown("<h2 class=\"section-header\">🛠️ LANGKAH 2: MENYIAPKAN DATA</h2>", unsafe_allow_html=True)
         
         X_processed, pca, df_encoded, scaler = preprocess_data(df)
         
@@ -278,7 +275,7 @@ def main():
     
     # BAGIAN 3: OPTIMASI CLUSTER
     elif selected_section == "🎯 Optimasi Cluster":
-        st.markdown('<h2 class="section-header">🎯 LANGKAH 3: MENCARI JUMLAH CLUSTER TERBAIK</h2>', unsafe_allow_html=True)
+        st.markdown("<h2 class=\"section-header\">🎯 LANGKAH 3: MENCARI JUMLAH CLUSTER TERBAIK</h2>", unsafe_allow_html=True)
         
         X_processed, pca, df_encoded, scaler = preprocess_data(df)
         k_terbaik, inertia_values, silhouette_scores, jumlah_k = find_best_k(X_processed)
@@ -304,7 +301,7 @@ def main():
         
         # Hasil terbaik
         st.markdown(f"""
-        <div class="success-box">
+        <div class=\"success-box\">
         <h3>🏆 HASIL OPTIMAL</h3>
         <p><strong>Jumlah cluster terbaik:</strong> {k_terbaik} cluster</p>
         <p><strong>Silhouette Score:</strong> {max(silhouette_scores):.3f}</p>
@@ -336,7 +333,7 @@ def main():
     
     # BAGIAN 4: VISUALISASI PEMILIHAN
     elif selected_section == "📈 Visualisasi Pemilihan":
-        st.markdown('<h2 class="section-header">📈 LANGKAH 4: VISUALISASI PEMILIHAN CLUSTER</h2>', unsafe_allow_html=True)
+        st.markdown("<h2 class=\"section-header\">📈 LANGKAH 4: VISUALISASI PEMILIHAN CLUSTER</h2>", unsafe_allow_html=True)
         
         X_processed, pca, df_encoded, scaler = preprocess_data(df)
         k_terbaik, inertia_values, silhouette_scores, jumlah_k = find_best_k(X_processed)
@@ -346,9 +343,9 @@ def main():
         
         # Grafik Elbow Method (untuk melihat penurunan inertia)
         ax1.plot(jumlah_k, inertia_values, "bo-", linewidth=3, markersize=10, color='#1f77b4')
-        ax1.set_xlabel("Jumlah Cluster", fontsize=12, fontweight='bold')
-        ax1.set_ylabel("Inertia (Kepadatan dalam Cluster)", fontsize=12, fontweight='bold')
-        ax1.set_title("Elbow Method - Mencari Jumlah Cluster Optimal", fontsize=14, fontweight='bold')
+        ax1.set_xlabel("Jumlah Cluster", fontweight='bold')
+        ax1.set_ylabel("Inertia (Kepadatan dalam Cluster)", fontweight='bold')
+        ax1.set_title("Elbow Method - Mencari Jumlah Cluster Optimal", fontweight='bold', fontsize=14)
         ax1.grid(True, alpha=0.3)
         ax1.set_xticks(jumlah_k)
         
@@ -361,9 +358,9 @@ def main():
         ax2.axvline(x=k_terbaik, color="green", linestyle="--", alpha=0.8, linewidth=2,
                    label=f"Terbaik: {k_terbaik} cluster")
         ax2.axhline(y=max(silhouette_scores), color="green", linestyle=":", alpha=0.6, linewidth=1)
-        ax2.set_xlabel("Jumlah Cluster", fontsize=12, fontweight='bold')
-        ax2.set_ylabel("Silhouette Score", fontsize=12, fontweight='bold')
-        ax2.set_title("Silhouette Score - Kualitas Pemisahan Cluster", fontsize=14, fontweight='bold')
+        ax2.set_xlabel("Jumlah Cluster", fontweight='bold')
+        ax2.set_ylabel("Silhouette Score", fontweight='bold')
+        ax2.set_title("Silhouette Score - Kualitas Pemisahan Cluster", fontweight='bold', fontsize=14)
         ax2.legend(fontsize=11)
         ax2.grid(True, alpha=0.3)
         ax2.set_xticks(jumlah_k)
@@ -376,7 +373,7 @@ def main():
         st.pyplot(fig)
         
         st.markdown(f"""
-        <div class="success-box">
+        <div class=\"success-box\">
         <h4>📊 Interpretasi Grafik:</h4>
         <p>• <strong>Elbow Method:</strong> Mencari titik "siku" dimana penurunan inertia mulai melambat</p>
         <p>• <strong>Silhouette Score:</strong> Grafik menunjukkan bahwa <strong>{k_terbaik} cluster</strong> memberikan hasil terbaik dengan score <strong>{max(silhouette_scores):.3f}</strong></p>
@@ -386,7 +383,7 @@ def main():
     
     # BAGIAN 5: HASIL CLUSTERING
     elif selected_section == "✨ Hasil Clustering":
-        st.markdown('<h2 class="section-header">✨ LANGKAH 5: HASIL CLUSTERING</h2>', unsafe_allow_html=True)
+        st.markdown("<h2 class=\"section-header\">✨ LANGKAH 5: HASIL CLUSTERING</h2>", unsafe_allow_html=True)
         
         X_processed, pca, df_encoded, scaler = preprocess_data(df)
         k_terbaik, inertia_values, silhouette_scores, jumlah_k = find_best_k(X_processed)
@@ -434,41 +431,29 @@ def main():
         # Karakteristik cluster berdasarkan fitur asli
         st.subheader("🔍 Karakteristik Cluster")
         
-        # Convert boolean columns to int for mean calculation
-        df_analysis = df_result.copy()
-        boolean_cols = [col for col in df_analysis.columns if df_analysis[col].dtype == 'bool']
-        for col in boolean_cols:
-            df_analysis[col] = df_analysis[col].astype(int)
+        # Identify numeric columns from df_encoded for mean calculation
+        numeric_cols_for_mean = df_encoded.select_dtypes(include=[np.number]).columns.tolist()
+        
+        # We need to map the cluster labels back to the df_encoded for this step
+        df_encoded_with_clusters = df_encoded.copy()
+        df_encoded_with_clusters['Cluster'] = cluster_labels
 
-        # Group by cluster and calculate mean for relevant features
-        feature_cols = ['Systemic Illness', 'Rectal Pain', 'Sore Throat', 'Penile Oedema', 
-                       'Oral Lesions', 'Solitary Lesion', 'Swollen Tonsils', 
-                       'HIV Infection', 'Sexually Transmitted Infection']
+        # Calculate mean for all numeric columns in df_encoded_with_clusters grouped by Cluster
+        cluster_summary = df_encoded_with_clusters.groupby('Cluster')[numeric_cols_for_mean].mean()
         
-        cluster_summary = df_analysis.groupby('Cluster')[feature_cols].mean()
-        
-        # Format untuk persentase
-        cluster_summary_pct = cluster_summary.copy()
-        for col in boolean_cols:
-            if col in cluster_summary_pct.columns:
-                cluster_summary_pct[col] = cluster_summary_pct[col] * 100
-        
-        st.write("**Rata-rata karakteristik per cluster (dalam persentase untuk fitur boolean):**")
-        st.dataframe(cluster_summary_pct.round(1), use_container_width=True)
+        st.write("**Rata-rata karakteristik per cluster (setelah encoding dan standardisasi):**")
+        st.dataframe(cluster_summary.round(3), use_container_width=True)
         
         # Heatmap karakteristik cluster
         st.subheader("🌡️ Heatmap Karakteristik Cluster")
         
         fig, ax = plt.subplots(figsize=(12, 6))
         
-        # Hanya untuk kolom boolean (dalam persentase)
-        boolean_summary = cluster_summary_pct[[col for col in boolean_cols if col in cluster_summary_pct.columns]]
-        
-        sns.heatmap(boolean_summary.T, annot=True, cmap='RdYlBu_r', center=50, 
-                   fmt='.1f', cbar_kws={'label': 'Persentase (%)'}, ax=ax)
-        ax.set_title('Karakteristik Cluster - Heatmap Gejala (%)', fontsize=14, fontweight='bold')
+        # Use the cluster_summary (which is already numeric and processed)
+        sns.heatmap(cluster_summary.T, annot=True, cmap='RdYlBu_r', fmt='.3f', cbar_kws={'label': 'Mean Value'}, ax=ax)
+        ax.set_title('Karakteristik Cluster - Heatmap Mean Values', fontsize=14, fontweight='bold')
         ax.set_xlabel('Cluster', fontweight='bold')
-        ax.set_ylabel('Gejala/Kondisi', fontweight='bold')
+        ax.set_ylabel('Fitur', fontweight='bold')
         plt.tight_layout()
         st.pyplot(fig)
         
@@ -505,7 +490,7 @@ def main():
         # Insight cluster
         st.subheader("💡 Insight Clustering")
         st.markdown(f"""
-        <div class="success-box">
+        <div class=\"success-box\">
         <h4>🔍 Analisis Hasil Clustering:</h4>
         <p>• Dataset berhasil dikelompokkan menjadi <strong>{k_terbaik} cluster</strong> yang berbeda</p>
         <p>• Setiap cluster menunjukkan pola gejala dan karakteristik yang unik</p>
@@ -514,97 +499,10 @@ def main():
         </div>
         """, unsafe_allow_html=True)
     
-    # BAGIAN 6: HIERARCHICAL CLUSTERING
-    elif selected_section == "🌳 Hierarchical Clustering":
-        st.markdown('<h2 class="section-header">🌳 LANGKAH 6: HIERARCHICAL CLUSTERING</h2>', unsafe_allow_html=True)
-        
-        X_processed, pca, df_encoded, scaler = preprocess_data(df)
-        
-        st.write("""
-        Hierarchical Clustering memberikan perspektif berbeda tentang struktur data dengan 
-        membangun hierarki cluster. Dendrogram membantu memvisualisasikan bagaimana cluster 
-        terbentuk secara bertahap.
-        """)
-        
-        # Untuk dataset besar, ambil sample untuk dendrogram
-        sample_size = min(1000, len(X_processed))
-        if len(X_processed) > 1000:
-            st.info(f"📊 Menggunakan sample {sample_size:,} data points untuk visualisasi dendrogram (dari total {len(X_processed):,} data)")
-            np.random.seed(42)
-            sample_indices = np.random.choice(X_processed.shape[0], sample_size, replace=False)
-            X_sample = X_processed[sample_indices]
-        else:
-            X_sample = X_processed
-            st.info(f"📊 Menggunakan seluruh dataset ({len(X_processed):,} data points) untuk dendrogram")
-        
-        # Hierarchical clustering
-        with st.spinner("Menghitung hierarchical clustering..."):
-            linked = linkage(X_sample, method='ward')
-        
-        # Plot dendrogram
-        fig, ax = plt.subplots(figsize=(15, 8))
-        
-        dendrogram(linked,
-                   orientation='top',
-                   distance_sort='descending',
-                   show_leaf_counts=True,
-                   ax=ax,
-                   color_threshold=0.7*max(linked[:,2]))
-        
-        ax.set_title('Dendrogram Hierarchical Clustering (Ward Method)', fontsize=16, fontweight='bold')
-        ax.set_xlabel('Sample Index', fontweight='bold')
-        ax.set_ylabel('Distance', fontweight='bold')
-        ax.grid(True, alpha=0.3, axis='y')
-        plt.tight_layout()
-        st.pyplot(fig)
-        
-        # Penjelasan dendrogram
-        st.subheader("📚 Interpretasi Dendrogram")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("""
-            **🌳 Cara Membaca Dendrogram:**
-            - Sumbu Y menunjukkan jarak antar cluster
-            - Garis horizontal menunjukkan penggabungan cluster
-            - Semakin tinggi garis, semakin besar jarak antar cluster
-            - Potong horizontal pada ketinggian tertentu untuk mendapatkan jumlah cluster
-            """)
-        
-        with col2:
-            st.write("""
-            **🔍 Ward Method:**
-            - Meminimalkan varians dalam cluster
-            - Menghasilkan cluster yang kompak dan seimbang
-            - Cocok untuk data numerik yang telah dinormalisasi
-            - Metode yang robust untuk berbagai jenis dataset
-            """)
-        
-        # Perbandingan dengan K-Means
-        st.subheader("⚖️ Perbandingan K-Means vs Hierarchical")
-        
-        comparison_df = pd.DataFrame({
-            'Aspek': ['Jumlah Cluster', 'Bentuk Cluster', 'Scalability', 'Interpretabilitas', 'Deterministic'],
-            'K-Means': ['Harus ditentukan', 'Spherical', 'Baik untuk data besar', 'Sedang', 'Ya (dengan random_state)'],
-            'Hierarchical': ['Fleksibel', 'Arbitrary shape', 'Terbatas untuk data besar', 'Tinggi (dendrogram)', 'Ya']
-        })
-        
-        st.dataframe(comparison_df, use_container_width=True)
-        
-        st.markdown("""
-        <div class="success-box">
-        <h4>🎯 Kesimpulan Analisis:</h4>
-        <p>• Hierarchical clustering memberikan insight tambahan tentang struktur data</p>
-        <p>• Dendrogram memvalidasi pilihan jumlah cluster dari K-Means</p>
-        <p>• Kedua metode saling melengkapi untuk pemahaman yang lebih komprehensif</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
     # Footer
     st.markdown("---")
     st.markdown("""
-    <div style='text-align: center; color: #666; padding: 20px;'>
+    <div style=\'text-align: center; color: #666; padding: 20px;\'>
         <p>🔬 <strong>Aplikasi Analisis Clustering Monkeypox</strong></p>
         <p>Dibuat untuk tugas akhir machine learning dengan implementasi K-Means dan Hierarchical Clustering</p>
         <p><em>Dataset: 25,000 pasien dengan 11 fitur medis</em></p>
