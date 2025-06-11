@@ -450,7 +450,7 @@ def main():
     
     # Add download button for the dataset
     st.sidebar.markdown("### Download Dataset")
-    st.sidebar.markdown(get_download_link(df, "mpoxcasesbycountryasof30June2024.csv"), unsafe_allow_html=True)
+    st.sidebar.markdown(get_download_link(df, "mpox cases by country as of 30 June 2024.csv"), unsafe_allow_html=True)
 
     # Sidebar controls
     st.sidebar.subheader("📊 Parameter Clustering")
