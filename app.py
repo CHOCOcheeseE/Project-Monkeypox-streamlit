@@ -62,7 +62,7 @@ st.markdown("""
 def load_data():
     """Memuat dan memproses data mpox"""
     try:
-        df = pd.read_csv("mpoxcasesbycountryasof30June2024.csv")
+        df = pd.read_csv("mpox cases by country as of 30 June 2024.csv")
         
         # Konversi kolom 'date' ke datetime jika ada
         if "date" in df.columns:
