@@ -17,4 +17,3 @@ plotly>=5.15.0
 
 # Utilities
 Pillow>=10.0.0
-

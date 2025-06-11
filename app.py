@@ -25,7 +25,7 @@ st.set_page_config(
 )
 
 # CSS untuk styling
-st.markdown("""
+st.markdown(r"""
 <style>
     .main-header {
         font-size: 3rem;
@@ -62,57 +62,26 @@ st.markdown("""
 def load_data():
     """Memuat dan memproses data mpox"""
     try:
-        # Coba baca file yang sudah diagregasi
-        df = pd.read_csv("mpox_aggregated_data.csv")
-        return df
+        df = pd.read_csv("mpoxcasesbycountryasof30June2024.csv")
+        
+        # Konversi kolom 'date' ke datetime
+        df["date"] = pd.to_datetime(df["date"])
+        
+        # Agregasi data: ambil entri terbaru untuk setiap negara
+        # Urutkan berdasarkan tanggal dan kemudian drop duplicates, menjaga yang terakhir
+        df_aggregated = df.sort_values(by="date").drop_duplicates(subset=["country"], keep="last")
+        
+        # Pilih kolom yang relevan untuk clustering
+        # Sesuaikan ini jika Anda ingin menggunakan kolom lain
+        df_final = df_aggregated[["country", "who_region", "total_confirmed_cases", "total_deaths"]]
+        
+        # Handle missing values jika ada (misalnya, isi dengan 0 atau rata-rata)
+        df_final = df_final.fillna(0) # Mengisi NaN dengan 0, bisa disesuaikan
+        
+        return df_final
     except FileNotFoundError:
-        # Jika file tidak ada, buat data dummy untuk demo
-        st.warning("File mpox_aggregated_data.csv tidak ditemukan. Menggunakan data dummy untuk demo.")
-        
-        # Data dummy untuk demo
-        np.random.seed(42)
-        countries = ["USA", "Brazil", "Spain", "France", "Germany", "UK", "Canada", "Australia", 
-                    "Netherlands", "Belgium", "Portugal", "Italy", "Mexico", "Peru", "Colombia",
-                    "Argentina", "Chile", "Sweden", "Norway", "Denmark", "Finland", "Austria",
-                    "Switzerland", "Poland", "Czech Republic", "Hungary", "Romania", "Greece",
-                    "Turkey", "Israel", "South Africa", "Nigeria", "Kenya", "Ghana", "Morocco",
-                    "Egypt", "India", "Thailand", "Philippines", "Japan", "South Korea", "Singapore"]
-        
-        regions = ["AMRO", "EURO", "AFRO", "SEARO", "WPRO", "EMRO"]
-        region_mapping = {
-            "USA": "AMRO", "Brazil": "AMRO", "Canada": "AMRO", "Mexico": "AMRO", "Peru": "AMRO",
-            "Colombia": "AMRO", "Argentina": "AMRO", "Chile": "AMRO",
-            "Spain": "EURO", "France": "EURO", "Germany": "EURO", "UK": "EURO", "Netherlands": "EURO",
-            "Belgium": "EURO", "Portugal": "EURO", "Italy": "EURO", "Sweden": "EURO", "Norway": "EURO",
-            "Denmark": "EURO", "Finland": "EURO", "Austria": "EURO", "Switzerland": "EURO",
-            "Poland": "EURO", "Czech Republic": "EURO", "Hungary": "EURO", "Romania": "EURO",
-            "Greece": "EURO", "Turkey": "EURO",
-            "South Africa": "AFRO", "Nigeria": "AFRO", "Kenya": "AFRO", "Ghana": "AFRO", "Morocco": "AFRO",
-            "India": "SEARO", "Thailand": "SEARO",
-            "Australia": "WPRO", "Philippines": "WPRO", "Japan": "WPRO", "South Korea": "WPRO", "Singapore": "WPRO",
-            "Egypt": "EMRO", "Israel": "EMRO"
-        }
-        
-        data = []
-        for country in countries:
-            # Generate realistic data with some correlation
-            base_cases = np.random.exponential(100)
-            total_confirmed = int(base_cases * np.random.uniform(0.5, 3.0))
-            total_deaths = int(total_confirmed * np.random.uniform(0.01, 0.05))
-            total_suspected = int(total_confirmed * np.random.uniform(0.1, 0.5))
-            case_fatality_rate = (total_deaths / total_confirmed * 100) if total_confirmed > 0 else 0
-            
-            data.append({
-                "country": country,
-                "who_region": region_mapping.get(country, "AMRO"),
-                "total_confirmed_cases": total_confirmed,
-                "total_deaths": total_deaths,
-                "total_suspected_cases": total_suspected,
-                "case_fatality_rate": case_fatality_rate
-            })
-        
-        df = pd.DataFrame(data)
-        return df
+        st.error("File mpoxcasesbycountryasof30June2024.csv tidak ditemukan. Pastikan file berada di direktori yang sama.")
+        st.stop() # Menghentikan aplikasi jika file tidak ditemukan
 
 # Fungsi untuk preprocessing data
 @st.cache_data
@@ -395,7 +364,7 @@ def get_download_link(df, filename):
 # Main app
 def main():
     # Header
-    st.markdown('<h1 class="main-header">🔬 Analisis Clustering Mpox K-Means</h1>', unsafe_allow_html=True)
+    st.markdown(r'<h1 class="main-header">🔬 Analisis Clustering Mpox K-Means</h1>', unsafe_allow_html=True)
     
     # Sidebar untuk kontrol
     st.sidebar.header("⚙️ Pengaturan Analisis")
@@ -441,36 +410,36 @@ def main():
         X_scaled, X_processed, df_encoded, scaler, pca, kolom_numerik, kolom_kategori = preprocess_data(df, pca_variance)
     
     # Informasi dataset
-    st.markdown('<h2 class="sub-header">📋 Informasi Dataset</h2>', unsafe_allow_html=True)
+    st.markdown(r'<h2 class="sub-header">📋 Informasi Dataset</h2>', unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.markdown(r'<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Jumlah Negara", df.shape[0])
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(r'</div>', unsafe_allow_html=True)
     
     with col2:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.markdown(r'<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Jumlah Fitur Asli", df.shape[1] - 1)  # -1 untuk kolom country
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(r'</div>', unsafe_allow_html=True)
     
     with col3:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.markdown(r'<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Fitur Setelah Encoding", df_encoded.shape[1])
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(r'</div>', unsafe_allow_html=True)
     
     with col4:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.markdown(r'<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Komponen PCA", X_processed.shape[1])
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(r'</div>', unsafe_allow_html=True)
     
     # Tampilkan data
     if st.checkbox("Tampilkan Data Asli"):
         st.dataframe(df, use_container_width=True)
     
     # Pencarian cluster optimal
-    st.markdown('<h2 class="sub-header">🎯 Pencarian Jumlah Cluster Optimal</h2>', unsafe_allow_html=True)
+    st.markdown(r'<h2 class="sub-header">🎯 Pencarian Jumlah Cluster Optimal</h2>', unsafe_allow_html=True)
     
     with st.spinner("Mencari jumlah cluster optimal..."):
         k_range, inertias, silhouette_scores, optimal_k = find_optimal_clusters(X_processed, max_clusters)
@@ -483,14 +452,14 @@ def main():
     st.plotly_chart(fig_selection, use_container_width=True)
     
     # Info cluster optimal
-    st.markdown('<div class="info-box">', unsafe_allow_html=True)
+    st.markdown(r'<div class="info-box">', unsafe_allow_html=True)
     st.write(f"**Jumlah Cluster Optimal (berdasarkan Silhouette Score):** {optimal_k}")
     st.write(f"**Silhouette Score Terbaik:** {max(silhouette_scores):.3f}")
     st.write(f"**Jumlah Cluster yang Digunakan:** {n_clusters}")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(r'</div>', unsafe_allow_html=True)
     
     # Clustering
-    st.markdown('<h2 class="sub-header">🎨 Hasil Clustering</h2>', unsafe_allow_html=True)
+    st.markdown(r'<h2 class="sub-header">🎨 Hasil Clustering</h2>', unsafe_allow_html=True)
     
     with st.spinner("Melakukan clustering..."):
         cluster_labels, kmeans_model = perform_clustering(X_processed, n_clusters)
@@ -505,65 +474,65 @@ def main():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.markdown(r'<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Silhouette Score Final", f"{silhouette_final:.3f}")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(r'</div>', unsafe_allow_html=True)
     
     with col2:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.markdown(r'<div class="metric-card">', unsafe_allow_html=True)
         cluster_counts = pd.Series(cluster_labels).value_counts().sort_index()
         st.write("**Distribusi Cluster:**")
         for cluster_id, count in cluster_counts.items():
             percentage = (count / len(df)) * 100
-            st.write(f"Cluster {cluster_id}: {count} negara ({percentage:.1f}%)")
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.write(f"Cluster {cluster_id}: {count} negara ({percentage:.1f}%) ")
+        st.markdown(r'</div>', unsafe_allow_html=True)
     
     # Visualisasi PCA 2D
-    st.markdown('<h3>🔍 Visualisasi PCA 2D</h3>', unsafe_allow_html=True)
+    st.markdown(r'<h3>🔍 Visualisasi PCA 2D</h3>', unsafe_allow_html=True)
     fig_pca = create_pca_visualization(X_scaled, cluster_labels, n_clusters)
     st.plotly_chart(fig_pca, use_container_width=True)
     
     # Analisis distribusi
-    st.markdown('<h2 class="sub-header">📊 Analisis Distribusi per Cluster</h2>', unsafe_allow_html=True)
+    st.markdown(r'<h2 class="sub-header">📊 Analisis Distribusi per Cluster</h2>', unsafe_allow_html=True)
     
     # WHO Region distribution
-    st.markdown('<h3>🌍 Distribusi WHO Region per Cluster</h3>', unsafe_allow_html=True)
+    st.markdown(r'<h3>🌍 Distribusi WHO Region per Cluster</h3>', unsafe_allow_html=True)
     fig_region = create_cluster_distribution_plot(df_with_clusters)
     st.plotly_chart(fig_region, use_container_width=True)
     
     # Numeric features analysis
-    st.markdown('<h3>📈 Rata-rata Fitur Numerik per Cluster</h3>', unsafe_allow_html=True)
+    st.markdown(r'<h3>📈 Rata-rata Fitur Numerik per Cluster</h3>', unsafe_allow_html=True)
     fig_numeric = create_numeric_features_plot(df_with_clusters, kolom_numerik)
     st.plotly_chart(fig_numeric, use_container_width=True)
     
     # Scatter plot
-    st.markdown('<h3>🎯 Scatter Plot: Kasus Terkonfirmasi vs Kematian</h3>', unsafe_allow_html=True)
+    st.markdown(r'<h3>🎯 Scatter Plot: Kasus Terkonfirmasi vs Kematian</h3>', unsafe_allow_html=True)
     fig_scatter = create_scatter_plot(df_with_clusters)
     st.plotly_chart(fig_scatter, use_container_width=True)
     
     # Visualisasi tambahan
-    st.markdown('<h2 class="sub-header">📊 Visualisasi Tambahan</h2>', unsafe_allow_html=True)
+    st.markdown(r'<h2 class="sub-header">📊 Visualisasi Tambahan</h2>', unsafe_allow_html=True)
     
     # Tabs untuk visualisasi tambahan
     tab1, tab2, tab3 = st.tabs(["📦 Box Plots", "📊 Histograms", "🔥 Heatmap Profil"])
     
     with tab1:
-        st.markdown('<h3>📦 Box Plot Fitur Numerik per Cluster</h3>', unsafe_allow_html=True)
+        st.markdown(r'<h3>📦 Box Plot Fitur Numerik per Cluster</h3>', unsafe_allow_html=True)
         fig_box = create_boxplots(df_with_clusters, kolom_numerik)
         st.plotly_chart(fig_box, use_container_width=True)
     
     with tab2:
-        st.markdown('<h3>📊 Distribusi (Histogram) Fitur Numerik per Cluster</h3>', unsafe_allow_html=True)
+        st.markdown(r'<h3>📊 Distribusi (Histogram) Fitur Numerik per Cluster</h3>', unsafe_allow_html=True)
         fig_hist = create_histograms(df_with_clusters, kolom_numerik)
         st.plotly_chart(fig_hist, use_container_width=True)
     
     with tab3:
-        st.markdown('<h3>🔥 Heatmap Profil Karakteristik Cluster</h3>', unsafe_allow_html=True)
+        st.markdown(r'<h3>🔥 Heatmap Profil Karakteristik Cluster</h3>', unsafe_allow_html=True)
         fig_heatmap = create_heatmap(df_encoded, cluster_labels)
         st.plotly_chart(fig_heatmap, use_container_width=True)
     
     # Profil cluster detail
-    st.markdown('<h2 class="sub-header">🔬 Profil Detail Cluster</h2>', unsafe_allow_html=True)
+    st.markdown(r'<h2 class="sub-header">🔬 Profil Detail Cluster</h2>', unsafe_allow_html=True)
     
     # Pilih cluster untuk analisis detail
     selected_cluster = st.selectbox(
@@ -587,7 +556,7 @@ def main():
         st.dataframe(cluster_stats, use_container_width=True)
     
     # Download section
-    st.markdown('<h2 class="sub-header">💾 Download Data</h2>', unsafe_allow_html=True)
+    st.markdown(r'<h2 class="sub-header">💾 Download Data</h2>', unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns(3)
     
@@ -611,7 +580,7 @@ def main():
     
     # Footer
     st.markdown("---")
-    st.markdown("""
+    st.markdown(r"""
     <div style='text-align: center; color: #666;'>
         <p>🔬 Aplikasi Analisis Clustering Mpox dengan K-Means</p>
         <p>Dibuat dengan ❤️ menggunakan Streamlit</p>
