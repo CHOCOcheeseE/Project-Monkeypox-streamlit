@@ -54,10 +54,110 @@ st.markdown("""
         border: 1px solid #1f77b4;
         margin: 1rem 0;
     }
+    .download-box {
+        background-color: #fff3cd;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        border: 2px solid #ffc107;
+        margin: 1rem 0;
+        text-align: center;
+    }
+    .upload-box {
+        background-color: #d1ecf1;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        border: 2px solid #bee5eb;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Fungsi untuk memuat data
+# Fungsi untuk menampilkan halaman instruksi download
+def show_download_instructions():
+    """Menampilkan instruksi untuk mengunduh dataset"""
+    st.markdown('<h1 class="main-header">🔬 Analisis Clustering Mpox K-Means</h1>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="download-box">', unsafe_allow_html=True)
+    st.markdown("""
+    ## 📥 Langkah 1: Unduh Dataset Terlebih Dahulu
+    
+    **Sebelum menggunakan aplikasi ini, Anda perlu mengunduh dataset Mpox terlebih dahulu.**
+    
+    ### Cara mengunduh dataset:
+    1. **Kunjungi repository GitHub:** [Dataset Monkeypox](https://github.com/CHOCOcheeseE/dataset-monkeypox)
+    2. **Cari file:** `mpox cases by country as of 30 June 2024.csv`
+    3. **Download file tersebut** ke komputer Anda
+    4. **Kembali ke aplikasi ini** dan upload file yang sudah diunduh
+    
+    ### Alternatif Download:
+    Anda juga bisa mengunduh file langsung dengan mengklik link berikut:
+    """)
+    
+    # Buat link download langsung ke file CSV di GitHub
+    github_raw_url = "https://raw.githubusercontent.com/CHOCOcheeseE/dataset-monkeypox/main/mpox%20cases%20by%20country%20as%20of%2030%20June%202024.csv"
+    
+    st.markdown(f"""
+    **[📁 Download Dataset CSV]({github_raw_url})**
+    
+    *Klik kanan pada link di atas dan pilih "Save Link As" untuk mengunduh file.*
+    """)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="upload-box">', unsafe_allow_html=True)
+    st.markdown("""
+    ## 📤 Langkah 2: Upload Dataset
+    
+    Setelah mengunduh dataset, silakan upload file CSV di bawah ini untuk melanjutkan analisis:
+    """)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Fungsi untuk memuat data dari file upload
+@st.cache_data
+def load_uploaded_data(uploaded_file):
+    """Memuat dan memproses data mpox dari file upload"""
+    try:
+        # Baca CSV dari uploaded file
+        df = pd.read_csv(uploaded_file)
+        
+        # Validasi kolom yang dibutuhkan
+        required_columns = ["country"]
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        
+        if missing_columns:
+            st.error(f"File tidak valid. Kolom yang hilang: {', '.join(missing_columns)}")
+            st.error("Pastikan Anda mengunduh file yang benar dari repository GitHub.")
+            return None
+        
+        # Konversi kolom 'date' ke datetime jika ada
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+            # Agregasi data: ambil entri terbaru untuk setiap negara
+            df_aggregated = df.sort_values(by="date").drop_duplicates(subset=["country"], keep="last")
+        else:
+            df_aggregated = df.drop_duplicates(subset=["country"], keep="last")
+        
+        # Pilih kolom yang relevan untuk clustering
+        available_columns = ["country"]
+        
+        # Cek kolom opsional
+        optional_columns = ["total_confirmed_cases", "total_deaths", "who_region"]
+        for col in optional_columns:
+            if col in df_aggregated.columns:
+                available_columns.append(col)
+        
+        df_final = df_aggregated[available_columns]
+        
+        # Handle missing values
+        df_final = df_final.fillna(0)
+        
+        return df_final
+        
+    except Exception as e:
+        st.error(f"Error memproses file: {str(e)}")
+        st.error("Pastikan file yang diupload adalah file CSV yang benar dari repository GitHub.")
+        return None
+
+# Fungsi untuk memuat data (original function, modified)
 @st.cache_data
 def load_data():
     """Memuat dan memproses data mpox"""
@@ -93,11 +193,9 @@ def load_data():
         
         return df_final
     except FileNotFoundError:
-        st.error("File mpoxcasesbycountryasof30June2024.csv tidak ditemukan. Pastikan file berada di direktori yang sama.")
-        st.stop()
+        return None
     except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
-        st.stop()
+        return None
 
 # Fungsi untuk preprocessing data
 @st.cache_data
@@ -437,20 +535,15 @@ def get_download_link(df, filename):
     href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download {filename}</a>'
     return href
 
-# Main app
-def main():
-    # Header
-    st.markdown('<h1 class="main-header">🔬 Analisis Clustering Mpox K-Means</h1>', unsafe_allow_html=True)
-    
+# Fungsi untuk menjalankan analisis clustering
+def run_clustering_analysis(df):
+    """Menjalankan analisis clustering lengkap"""
     # Sidebar untuk kontrol
     st.sidebar.header("⚙️ Pengaturan Analisis")
     
-    # Load data
-    df = load_data()
-    
     # Add download button for the dataset
     st.sidebar.markdown("### Download Dataset")
-    st.sidebar.markdown(get_download_link(df, "mpox cases by country as of 30 June 2024.csv"), unsafe_allow_html=True)
+    st.sidebar.markdown(get_download_link(df, "mpox_cases_by_country_as_of_30_June_2024.csv"), unsafe_allow_html=True)
 
     # Sidebar controls
     st.sidebar.subheader("📊 Parameter Clustering")
@@ -556,6 +649,7 @@ def main():
             
             st.write("**Profil Pusat Cluster (Skala Asli):**")
             st.dataframe(cluster_centers_df, use_container_width=True)
+            
         except Exception as e:
             st.warning(f"Tidak dapat menampilkan pusat cluster: {str(e)}")
     
@@ -597,7 +691,3 @@ def main():
     # Download results
     st.markdown('<h3 class="sub-header">Download Hasil Clustering</h3>', unsafe_allow_html=True)
     st.markdown(get_download_link(df_with_clusters, "hasil_clustering_mpox.csv"), unsafe_allow_html=True)
-
-# Run the app
-if __name__ == "__main__":
-    main()
