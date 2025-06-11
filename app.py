@@ -651,43 +651,201 @@ def run_clustering_analysis(df):
             st.dataframe(cluster_centers_df, use_container_width=True)
             
         except Exception as e:
-            st.warning(f"Tidak dapat menampilkan pusat cluster: {str(e)}")
+            st.warning(f"Tidak dapat menampilkan pusat cluster dalam skala asli: {str(e)}")
     
-    # Visualisasi PCA
-    st.markdown('<h3 class="sub-header">Visualisasi PCA</h3>', unsafe_allow_html=True)
+    # Metrik evaluasi clustering
+    silhouette_avg = silhouette_score(X_processed, cluster_labels)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.metric("Jumlah Cluster", n_clusters)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col2:  
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.metric("Silhouette Score", f"{silhouette_avg:.3f}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.metric("Inertia", f"{kmeans_model.inertia_:.0f}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Distribusi cluster
+    cluster_counts = df_with_clusters['Cluster'].value_counts().sort_index()
+    st.write("**Distribusi Negara per Cluster:**")
+    
+    for cluster_id, count in cluster_counts.items():
+        percentage = (count / len(df_with_clusters)) * 100
+        st.write(f"- Cluster {cluster_id}: {count} negara ({percentage:.1f}%)")
+    
+    # Visualisasi clustering
+    st.markdown('<h2 class="sub-header">📈 Visualisasi Clustering</h2>', unsafe_allow_html=True)
+    
+    # PCA 2D visualization
+    st.subheader("Visualisasi PCA 2D")
     fig_pca = create_pca_visualization(X_scaled, cluster_labels, n_clusters)
     st.plotly_chart(fig_pca, use_container_width=True)
     
-    # Visualisasi Distribusi WHO Region per Cluster
-    st.markdown('<h3 class="sub-header">Distribusi WHO Region per Cluster</h3>', unsafe_allow_html=True)
-    fig_dist = create_cluster_distribution_plot(df_with_clusters)
-    st.plotly_chart(fig_dist, use_container_width=True)
+    # Analisis per cluster
+    st.markdown('<h2 class="sub-header">🔍 Analisis Detail per Cluster</h2>', unsafe_allow_html=True)
     
-    # Visualisasi Rata-rata Fitur Numerik per Cluster
-    st.markdown('<h3 class="sub-header">Rata-rata Fitur Numerik per Cluster</h3>', unsafe_allow_html=True)
-    fig_numeric_features = create_numeric_features_plot(df_with_clusters, kolom_numerik)
-    st.plotly_chart(fig_numeric_features, use_container_width=True)
+    # Tampilkan negara-negara di setiap cluster
+    for cluster_id in sorted(df_with_clusters['Cluster'].unique()):
+        with st.expander(f"Cluster {cluster_id} - Detail Negara"):
+            cluster_data = df_with_clusters[df_with_clusters['Cluster'] == cluster_id]
+            
+            st.write(f"**Jumlah Negara:** {len(cluster_data)}")
+            
+            # Tampilkan daftar negara
+            countries = cluster_data['country'].tolist()
+            st.write(f"**Negara-negara:** {', '.join(countries)}")
+            
+            # Statistik deskriptif untuk cluster ini
+            if len(kolom_numerik) > 0:
+                st.write("**Statistik Deskriptif:**")
+                cluster_stats = cluster_data[kolom_numerik].describe()
+                st.dataframe(cluster_stats, use_container_width=True)
     
-    # Scatter Plot Kasus vs Kematian
-    st.markdown('<h3 class="sub-header">Scatter Plot: Total Confirmed Cases vs Total Deaths</h3>', unsafe_allow_html=True)
-    fig_scatter = create_scatter_plot(df_with_clusters)
-    st.plotly_chart(fig_scatter, use_container_width=True)
+    # Plot distribusi WHO Region
+    st.subheader("Distribusi WHO Region per Cluster")
+    fig_region = create_cluster_distribution_plot(df_with_clusters)
+    st.plotly_chart(fig_region, use_container_width=True)
     
-    # Box Plots Fitur Numerik per Cluster
-    st.markdown('<h3 class="sub-header">Box Plots Fitur Numerik per Cluster</h3>', unsafe_allow_html=True)
-    fig_boxplots = create_boxplots(df_with_clusters, kolom_numerik)
-    st.plotly_chart(fig_boxplots, use_container_width=True)
+    # Plot fitur numerik
+    if len(kolom_numerik) > 0:
+        st.subheader("Rata-rata Fitur Numerik per Cluster")
+        fig_numeric = create_numeric_features_plot(df_with_clusters, kolom_numerik)
+        st.plotly_chart(fig_numeric, use_container_width=True)
+        
+        # Scatter plot untuk cases vs deaths
+        st.subheader("Scatter Plot: Kasus vs Kematian")
+        fig_scatter = create_scatter_plot(df_with_clusters)
+        st.plotly_chart(fig_scatter, use_container_width=True)
+        
+        # Box plots
+        st.subheader("Box Plot Distribusi Fitur per Cluster")
+        fig_box = create_boxplots(df_with_clusters, kolom_numerik)
+        st.plotly_chart(fig_box, use_container_width=True)
+        
+        # Histograms
+        st.subheader("Histogram Distribusi Fitur per Cluster")
+        fig_hist = create_histograms(df_with_clusters, kolom_numerik)
+        st.plotly_chart(fig_hist, use_container_width=True)
     
-    # Histograms Fitur Numerik per Cluster
-    st.markdown('<h3 class="sub-header">Histograms Fitur Numerik per Cluster</h3>', unsafe_allow_html=True)
-    fig_histograms = create_histograms(df_with_clusters, kolom_numerik)
-    st.plotly_chart(fig_histograms, use_container_width=True)
-    
-    # Heatmap Profil Karakteristik Cluster
-    st.markdown('<h3 class="sub-header">Heatmap Profil Karakteristik Cluster</h3>', unsafe_allow_html=True)
+    # Heatmap profil cluster
+    st.subheader("Heatmap Profil Cluster")
     fig_heatmap = create_heatmap(df_encoded, cluster_labels)
     st.plotly_chart(fig_heatmap, use_container_width=True)
     
+    # Interpretasi dan insight
+    st.markdown('<h2 class="sub-header">💡 Interpretasi dan Insight</h2>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="info-box">', unsafe_allow_html=True)
+    st.markdown("""
+    ### Cara Membaca Hasil Clustering:
+    
+    **1. Silhouette Score:**
+    - Nilai antara -1 hingga 1
+    - Semakin tinggi (mendekati 1), semakin baik kualitas clustering
+    - Nilai > 0.5 dianggap baik, > 0.7 sangat baik
+    
+    **2. Interpretasi Cluster:**
+    - Setiap cluster mengelompokkan negara dengan karakteristik serupa
+    - Perhatikan pola dalam fitur numerik (kasus, kematian) dan kategorikal (WHO region)
+    - Cluster dapat menunjukkan tingkat keparahan wabah yang berbeda
+    
+    **3. Visualisasi PCA:**
+    - Menunjukkan sebaran cluster dalam ruang 2 dimensi
+    - Cluster yang terpisah jelas menunjukkan perbedaan karakteristik yang signifikan
+    - Overlap antar cluster mengindikasikan kesamaan karakteristik
+    
+    **4. Profil Cluster:**
+    - Heatmap menunjukkan karakteristik rata-rata setiap cluster
+    - Warna merah = nilai tinggi, biru = nilai rendah
+    - Gunakan untuk memahami ciri khas setiap cluster
+    """)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
     # Download results
-    st.markdown('<h3 class="sub-header">Download Hasil Clustering</h3>', unsafe_allow_html=True)
-    st.markdown(get_download_link(df_with_clusters, "hasil_clustering_mpox.csv"), unsafe_allow_html=True)
+    st.markdown('<h2 class="sub-header">💾 Download Hasil Analisis</h2>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Data dengan Label Cluster:**")
+        st.markdown(get_download_link(df_with_clusters, "mpox_clustering_results.csv"), unsafe_allow_html=True)
+    
+    with col2:
+        if 'cluster_centers_df' in locals():
+            st.markdown("**Profil Pusat Cluster:**")
+            st.markdown(get_download_link(cluster_centers_df, "cluster_centers_profile.csv"), unsafe_allow_html=True)
+    
+    # Tabel hasil akhir
+    st.markdown('<h2 class="sub-header">📋 Tabel Hasil Clustering</h2>', unsafe_allow_html=True)
+    st.dataframe(df_with_clusters, use_container_width=True)
+    
+    return df_with_clusters
+
+# Fungsi utama aplikasi
+def main():
+    """Fungsi utama aplikasi Streamlit"""
+    
+    # Coba muat data dari file lokal terlebih dahulu
+    df = load_data()
+    
+    if df is None:
+        # Jika file lokal tidak ditemukan, tampilkan instruksi download
+        show_download_instructions()
+        
+        # File uploader
+        uploaded_file = st.file_uploader(
+            "Upload file CSV dataset Mpox",
+            type=['csv'],
+            help="Upload file 'mpox cases by country as of 30 June 2024.csv' yang sudah didownload"
+        )
+        
+        if uploaded_file is not None:
+            df = load_uploaded_data(uploaded_file)
+            
+            if df is not None:
+                st.success("✅ File berhasil diupload dan diproses!")
+                
+                # Jalankan analisis clustering
+                try:
+                    df_results = run_clustering_analysis(df)
+                    
+                    # Pesan sukses
+                    st.balloons()
+                    st.success("🎉 Analisis clustering berhasil diselesaikan!")
+                    
+                except Exception as e:
+                    st.error(f"❌ Error dalam analisis clustering: {str(e)}")
+                    st.error("Silakan coba lagi atau periksa format data.")
+            else:
+                st.error("❌ Gagal memproses file. Pastikan file yang diupload benar.")
+        else:
+            st.info("👆 Silakan upload file CSV dataset Mpox untuk melanjutkan analisis.")
+    
+    else:
+        # Jika file lokal ditemukan, langsung jalankan analisis
+        st.markdown('<h1 class="main-header">🔬 Analisis Clustering Mpox K-Means</h1>', unsafe_allow_html=True)
+        
+        st.success("✅ Dataset ditemukan! Memulai analisis clustering...")
+        
+        try:
+            df_results = run_clustering_analysis(df)
+            
+            # Pesan sukses
+            st.balloons()
+            st.success("🎉 Analisis clustering berhasil diselesaikan!")
+            
+        except Exception as e:
+            st.error(f"❌ Error dalam analisis clustering: {str(e)}")
+            st.error("Silakan coba lagi atau periksa format data.")
+
+# Jalankan aplikasi
+if __name__ == "__main__":
+    main()
