@@ -13,42 +13,42 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-import io
-import base64
 
 # Konfigurasi halaman Streamlit
 st.set_page_config(
-    page_title="Analisis Clustering MPOX",
+    page_title="Analisis Clustering Mpox",
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# CSS untuk styling
+# CSS untuk styling yang lebih menarik
 st.markdown("""
 <style>
     .main-header {
         font-size: 2.5rem;
-        color: #2E86AB;
+        font-weight: bold;
+        color: #1f77b4;
         text-align: center;
         margin-bottom: 2rem;
     }
-    .sub-header {
+    .section-header {
         font-size: 1.5rem;
-        color: #A23B72;
+        font-weight: bold;
+        color: #ff7f0e;
+        margin-top: 2rem;
         margin-bottom: 1rem;
     }
-    .metric-container {
+    .metric-card {
         background-color: #f0f2f6;
         padding: 1rem;
-        border-radius: 10px;
-        margin: 1rem 0;
+        border-radius: 0.5rem;
+        margin: 0.5rem 0;
     }
     .info-box {
-        background-color: #e8f4f8;
+        background-color: #e8f4fd;
         padding: 1rem;
-        border-left: 4px solid #2E86AB;
+        border-left: 4px solid #1f77b4;
         margin: 1rem 0;
     }
 </style>
@@ -56,687 +56,601 @@ st.markdown("""
 
 # Fungsi untuk memuat dan memproses data
 @st.cache_data
-def load_and_process_data():
+def load_data():
     """
-    Memuat dataset MPOX dan melakukan preprocessing dengan error handling yang lebih baik
+    Memuat dataset mpox dari file CSV dan melakukan preprocessing awal.
+    Fungsi ini menggunakan caching untuk meningkatkan performa aplikasi.
     """
-    df = None
-    loading_method = None
-    error_details = []
-    
-    # Method 1: Try loading from GitHub
     try:
-        st.info("🌐 Mencoba memuat data dari GitHub...")
-        url = "https://raw.githubusercontent.com/CHOCOcheeseE/dataset-monkeypox/main/mpox%20cases%20by%20country%20as%20of%2030%20June%202024.csv"
-        df = pd.read_csv(url, encoding='utf-8')
-        
-        # Validate that we actually got data
-        if df is not None and not df.empty and len(df.columns) > 1:
-            loading_method = "GitHub"
-            st.success(f"✅ Berhasil memuat dari GitHub: {df.shape[0]} baris, {df.shape[1]} kolom")
-        else:
-            df = None
-            error_details.append("GitHub: Data kosong atau tidak valid")
-            
-    except Exception as e:
-        error_details.append(f"GitHub: {str(e)}")
-        st.warning(f"⚠️ Gagal memuat dari GitHub: {str(e)}")
-    
-    # Method 2: Try loading from local file if GitHub failed
-    if df is None:
-        local_filenames = [
-            "mpox cases by country as of 30 June 2024.csv",
-            "mpox_cases_by_country_as_of_30_June_2024.csv",
-            "mpox.csv",
-            "dataset.csv"
-        ]
-        
-        for filename in local_filenames:
-            try:
-                st.info(f"📁 Mencoba memuat file lokal: {filename}")
-                df = pd.read_csv(filename, encoding='utf-8')
-                
-                # Validate the loaded data
-                if df is not None and not df.empty and len(df.columns) > 1:
-                    loading_method = "Local"
-                    st.success(f"✅ Berhasil memuat dari file lokal '{filename}': {df.shape[0]} baris, {df.shape[1]} kolom")
-                    break
-                else:
-                    df = None
-                    error_details.append(f"File '{filename}': Data kosong atau tidak valid")
-                    
-            except FileNotFoundError:
-                error_details.append(f"File '{filename}': Tidak ditemukan")
-                continue
-            except Exception as e:
-                error_details.append(f"File '{filename}': {str(e)}")
-                continue
-    
-    # Method 3: Try alternative encoding if still failed
-    if df is None:
-        try:
-            st.info("🔄 Mencoba encoding alternatif...")
-            # Try the first local filename with different encoding
-            df = pd.read_csv("mpox cases by country as of 30 June 2024.csv", encoding='latin-1')
-            
-            if df is not None and not df.empty and len(df.columns) > 1:
-                loading_method = "Local (latin-1)"
-                st.success(f"✅ Berhasil dengan encoding latin-1: {df.shape[0]} baris, {df.shape[1]} kolom")
-            else:
-                df = None
-                
-        except Exception as e:
-            error_details.append(f"Encoding alternatif: {str(e)}")
-    
-    # If all methods failed, provide detailed error reporting
-    if df is None:
-        st.error("❌ Semua metode loading gagal!")
-        
-        with st.expander("🔍 Detail Error (Klik untuk melihat)"):
-            st.write("**Daftar percobaan yang dilakukan:**")
-            for i, error in enumerate(error_details, 1):
-                st.write(f"{i}. {error}")
-        
-        st.info("""
-        **Solusi yang bisa dicoba:**
-        
-        **Untuk file lokal:**
-        1. Pastikan file CSV berada di folder yang sama dengan script Python Anda
-        2. Coba rename file menjadi salah satu dari nama berikut:
-           - `mpox cases by country as of 30 June 2024.csv`
-           - `mpox_cases_by_country_as_of_30_June_2024.csv`
-           - `mpox.csv`
-           - `dataset.csv`
-        3. Pastikan file tidak sedang dibuka di Excel atau aplikasi lain
-        4. Periksa bahwa file memiliki data (bukan file kosong)
-        
-        **Untuk loading dari internet:**
-        1. Periksa koneksi internet Anda
-        2. Coba restart aplikasi Streamlit
-        3. Coba akses URL secara manual di browser
-        
-        **Upload manual:**
-        Anda juga bisa upload file secara manual menggunakan widget di bawah ini.
-        """)
-        
-        # Provide file uploader as fallback
-        st.markdown("### 📤 Upload File CSV Secara Manual")
-        uploaded_file = st.file_uploader(
-            "Pilih file CSV dataset MPOX", 
-            type=['csv'],
-            help="Upload file CSV yang berisi data kasus MPOX per negara"
-        )
-        
-        if uploaded_file is not None:
-            try:
-                df = pd.read_csv(uploaded_file)
-                if df is not None and not df.empty:
-                    loading_method = "Manual Upload"
-                    st.success(f"✅ File berhasil diupload: {df.shape[0]} baris, {df.shape[1]} kolom")
-                else:
-                    st.error("File yang diupload kosong atau tidak valid")
-                    return None, None, None, None, None
-            except Exception as e:
-                st.error(f"Error membaca file yang diupload: {str(e)}")
-                return None, None, None, None, None
-        else:
-            return None, None, None, None, None
-    
-    # If we successfully loaded data, proceed with preprocessing
-    try:
-        st.info(f"🔄 Memproses data yang dimuat dari: {loading_method}")
-        
-        # Display basic info about the dataset
-        st.sidebar.success(f"✅ Dataset dimuat dari: {loading_method}")
-        st.sidebar.info(f"📊 Dimensi: {df.shape[0]} negara, {df.shape[1]} kolom")
-        
-        # Show column names for debugging
-        with st.expander("📋 Informasi Kolom Dataset (untuk debugging)"):
-            col_info = pd.DataFrame({
-                'No': range(1, len(df.columns) + 1),
-                'Nama Kolom': df.columns,
-                'Tipe Data': df.dtypes.astype(str),
-                'Contoh Data': [str(df.iloc[0, i]) if len(df) > 0 else 'N/A' for i in range(len(df.columns))]
-            })
-            st.dataframe(col_info, use_container_width=True)
-        
-        # Preprocessing data
-        df_fitur = df.drop(columns=["country"] if "country" in df.columns else [])
-        
-        # Identifikasi kolom kategori dan numerik
-        kolom_kategori = df_fitur.select_dtypes(include=["object"]).columns
-        kolom_numerik = df_fitur.select_dtypes(include=[np.number]).columns
-        
-        st.info(f"📊 Fitur numerik: {len(kolom_numerik)}, Fitur kategori: {len(kolom_kategori)}")
-        
-        # One-hot encoding untuk kolom kategori
-        if len(kolom_kategori) > 0:
-            df_encoded = pd.get_dummies(df_fitur, columns=kolom_kategori, drop_first=True)
-            st.info(f"🔄 One-hot encoding diterapkan pada {len(kolom_kategori)} kolom kategori")
-        else:
-            df_encoded = df_fitur.copy()
-        
-        # Handle missing values before standardization
-        if df_encoded.isnull().sum().sum() > 0:
-            st.warning(f"⚠️ Ditemukan {df_encoded.isnull().sum().sum()} nilai kosong, akan diisi dengan median/modus")
-            # Fill numerical columns with median
-            for col in df_encoded.select_dtypes(include=[np.number]).columns:
-                df_encoded[col].fillna(df_encoded[col].median(), inplace=True)
-            # Fill categorical columns with mode
-            for col in df_encoded.select_dtypes(include=['object']).columns:
-                df_encoded[col].fillna(df_encoded[col].mode()[0] if not df_encoded[col].mode().empty else 'Unknown', inplace=True)
-        
-        # Standardisasi data
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(df_encoded)
-        
-        st.success("✅ Preprocessing data selesai!")
-        
-        return df, df_encoded, X_scaled, kolom_numerik, scaler
-        
-    except Exception as e:
-        st.error(f"❌ Error dalam preprocessing data: {str(e)}")
-        with st.expander("🔍 Detail Error Preprocessing"):
-            st.exception(e)
-        return None, None, None, None, None
+        # Mencoba memuat data dari file lokal
+        df = pd.read_csv("mpox cases by country as of 30 June 2024.csv")
+        return df
+    except FileNotFoundError:
+        st.error("Dataset tidak ditemukan! Pastikan file 'mpox cases by country as of 30 June 2024.csv' ada di direktori yang sama dengan app.py")
+        return None
 
-# Fungsi untuk mencari jumlah cluster optimal
-@st.cache_data
-def find_optimal_clusters(X_scaled, max_k=10):
+def preprocess_data(df, pca_variance=0.95):
     """
-    Mencari jumlah cluster optimal menggunakan Elbow Method dan Silhouette Score
+    Melakukan preprocessing data untuk clustering, termasuk encoding kategori,
+    standardisasi, dan reduksi dimensi menggunakan PCA.
+    
+    Args:
+        df: DataFrame input
+        pca_variance: Proporsi varians yang ingin dipertahankan dalam PCA
+    
+    Returns:
+        Tuple berisi data yang telah diproses dan objek-objek preprocessing
     """
-    jumlah_k = range(2, max_k + 1)
+    # Menghapus kolom identifier
+    df_features = df.drop(columns=["country"])
+    
+    # Identifikasi kolom kategori dan numerik
+    categorical_cols = df_features.select_dtypes(include=["object"]).columns
+    numerical_cols = df_features.select_dtypes(include=[np.number]).columns
+    
+    # One-hot encoding untuk kolom kategori
+    if len(categorical_cols) > 0:
+        df_encoded = pd.get_dummies(df_features, columns=categorical_cols, drop_first=True)
+    else:
+        df_encoded = df_features.copy()
+    
+    # Standardisasi data
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(df_encoded)
+    
+    # PCA untuk reduksi dimensi
+    pca = PCA(n_components=pca_variance)
+    X_processed = pca.fit_transform(X_scaled)
+    
+    return X_processed, X_scaled, df_encoded, scaler, pca, categorical_cols, numerical_cols
+
+def find_optimal_clusters(X, max_clusters=10):
+    """
+    Mencari jumlah cluster optimal menggunakan metode Elbow dan Silhouette Score.
+    
+    Args:
+        X: Data yang telah diproses
+        max_clusters: Jumlah maksimum cluster yang akan diuji
+    
+    Returns:
+        Tuple berisi rentang k, inertia values, dan silhouette scores
+    """
+    k_range = range(2, max_clusters + 1)
     inertia_values = []
     silhouette_scores = []
     
-    progress_bar = st.progress(0)
-    
-    for i, k in enumerate(jumlah_k):
-        # Update progress bar
-        progress_bar.progress((i + 1) / len(jumlah_k))
-        
-        # K-means clustering
+    for k in k_range:
         kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-        labels = kmeans.fit_predict(X_scaled)
+        labels = kmeans.fit_predict(X)
         
-        # Hitung metrik
-        inertia = kmeans.inertia_
-        sil_score = silhouette_score(X_scaled, labels)
-        
-        inertia_values.append(inertia)
-        silhouette_scores.append(sil_score)
+        inertia_values.append(kmeans.inertia_)
+        silhouette_scores.append(silhouette_score(X, labels))
     
-    progress_bar.empty()
-    
-    # Temukan k optimal berdasarkan silhouette score
-    k_optimal = jumlah_k[np.argmax(silhouette_scores)]
-    
-    return jumlah_k, inertia_values, silhouette_scores, k_optimal
+    return k_range, inertia_values, silhouette_scores
 
-# Fungsi untuk melakukan clustering final
-@st.cache_data
-def perform_final_clustering(X_scaled, k_optimal):
+def perform_clustering(X, n_clusters, random_state=42):
     """
-    Melakukan clustering final dengan k optimal
+    Melakukan clustering K-Means dengan parameter yang ditentukan.
+    
+    Args:
+        X: Data yang telah diproses
+        n_clusters: Jumlah cluster yang diinginkan
+        random_state: Seed untuk reproducibility
+    
+    Returns:
+        Tuple berisi model KMeans dan label cluster
     """
-    kmeans = KMeans(n_clusters=k_optimal, random_state=42, n_init=10)
-    cluster_labels = kmeans.fit_predict(X_scaled)
-    
-    # Hitung silhouette score final
-    silhouette_final = silhouette_score(X_scaled, cluster_labels)
-    
-    return cluster_labels, silhouette_final, kmeans
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
+    labels = kmeans.fit_predict(X)
+    return kmeans, labels
 
-# Fungsi untuk PCA
-@st.cache_data
-def perform_pca(X_scaled, n_components=2):
-    """
-    Melakukan PCA untuk visualisasi
-    """
-    pca = PCA(n_components=n_components)
-    X_pca = pca.fit_transform(X_scaled)
-    
-    return X_pca, pca
+# Header utama aplikasi
+st.markdown('<h1 class="main-header">🔬 Analisis Clustering Mpox Kasus Per Negara</h1>', unsafe_allow_html=True)
 
-# Fungsi untuk membuat visualisasi
-def create_cluster_selection_plot(jumlah_k, inertia_values, silhouette_scores, k_optimal):
-    """
-    Membuat plot untuk pemilihan jumlah cluster optimal
-    """
-    fig = make_subplots(
-        rows=1, cols=2,
-        subplot_titles=('Elbow Method', 'Silhouette Score'),
-        specs=[[{"secondary_y": False}, {"secondary_y": False}]]
-    )
-    
-    # Elbow Method
-    fig.add_trace(
-        go.Scatter(x=list(jumlah_k), y=inertia_values, mode='lines+markers',
-                   name='Inertia', line=dict(color='blue')),
-        row=1, col=1
-    )
-    
-    # Silhouette Score
-    fig.add_trace(
-        go.Scatter(x=list(jumlah_k), y=silhouette_scores, mode='lines+markers',
-                   name='Silhouette Score', line=dict(color='red')),
-        row=1, col=2
-    )
-    
-    # Tandai k optimal
-    fig.add_vline(x=k_optimal, line_dash="dash", line_color="green", 
-                  annotation_text=f"Optimal: {k_optimal}", row=1, col=2)
-    
-    fig.update_xaxes(title_text="Jumlah Cluster (k)", row=1, col=1)
-    fig.update_xaxes(title_text="Jumlah Cluster (k)", row=1, col=2)
-    fig.update_yaxes(title_text="Inertia", row=1, col=1)
-    fig.update_yaxes(title_text="Silhouette Score", row=1, col=2)
-    
-    fig.update_layout(height=400, showlegend=False)
-    
-    return fig
-
-def create_pca_visualization(X_pca, cluster_labels, pca):
-    """
-    Membuat visualisasi PCA 2D
-    """
-    # Buat DataFrame untuk plotting
-    df_pca = pd.DataFrame(X_pca, columns=['PC1', 'PC2'])
-    df_pca['Cluster'] = cluster_labels
-    
-    # Buat scatter plot
-    fig = px.scatter(df_pca, x='PC1', y='PC2', color='Cluster',
-                     title=f'Hasil Clustering K-Means (Visualisasi PCA 2D)',
-                     labels={'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.1%})',
-                             'PC2': f'PC2 ({pca.explained_variance_ratio_[1]:.1%})'})
-    
-    # Tambahkan informasi variance explained
-    fig.add_annotation(
-        text=f"Total Variance Explained: {sum(pca.explained_variance_ratio_):.1%}",
-        xref="paper", yref="paper",
-        x=0.02, y=0.98, showarrow=False,
-        font=dict(size=12, color="black"),
-        bgcolor="rgba(255,255,255,0.8)"
-    )
-    
-    return fig
-
-def create_feature_analysis_plots(df, cluster_labels, kolom_numerik):
-    """
-    Membuat plot analisis fitur per cluster
-    """
-    df_plot = df.copy()
-    df_plot['Cluster'] = cluster_labels
-    
-    plots = []
-    
-    # Box plot untuk setiap fitur numerik
-    for col in kolom_numerik:
-        fig = px.box(df_plot, x='Cluster', y=col, 
-                     title=f'Distribusi {col} per Cluster')
-        plots.append(fig)
-    
-    return plots
-
-# Header aplikasi
-st.markdown('<h1 class="main-header">🔬 Analisis Clustering MPOX Kasus per Negara</h1>', 
-            unsafe_allow_html=True)
-
-# Sidebar untuk navigasi
-st.sidebar.header("🎛️ Panel Kontrol")
-selected_section = st.sidebar.selectbox("Pilih Bagian Analisis:", 
-                                       ["📊 Gambaran Data", 
-                                        "🎯 Penentuan Cluster Optimal", 
-                                        "🎨 Hasil Clustering", 
-                                        "📈 Analisis Fitur", 
-                                        "🔍 Profil Cluster"])
+# Sidebar untuk kontrol parameter
+st.sidebar.markdown("## ⚙️ Pengaturan Clustering")
+st.sidebar.markdown("Gunakan panel ini untuk menyesuaikan parameter analisis clustering")
 
 # Memuat data
-with st.spinner("Memuat dan memproses data..."):
-    df, df_encoded, X_scaled, kolom_numerik, scaler = load_and_process_data()
+df = load_data()
 
 if df is not None:
-    # Bagian 1: Gambaran Data
-    if selected_section == "📊 Gambaran Data":
-        st.markdown('<h2 class="sub-header">📊 Gambaran Umum Dataset</h2>', 
-                    unsafe_allow_html=True)
+    # Menampilkan informasi dataset di sidebar
+    st.sidebar.markdown("### 📊 Informasi Dataset")
+    st.sidebar.info(f"""
+    **Jumlah Negara:** {df.shape[0]}
+    **Jumlah Fitur:** {df.shape[1]}
+    **Periode Data:** Hingga 30 Juni 2024
+    """)
+    
+    # Parameter kontrol di sidebar
+    st.sidebar.markdown("### 🎛️ Parameter PCA")
+    pca_variance = st.sidebar.slider(
+        "Proporsi Varians yang Dipertahankan",
+        min_value=0.80,
+        max_value=0.99,
+        value=0.95,
+        step=0.01,
+        help="Menentukan berapa persen varians data yang ingin dipertahankan setelah reduksi dimensi"
+    )
+    
+    st.sidebar.markdown("### 🎯 Parameter Clustering")
+    max_clusters_test = st.sidebar.slider(
+        "Maksimum Cluster untuk Pengujian",
+        min_value=5,
+        max_value=15,
+        value=10,
+        help="Menentukan rentang jumlah cluster yang akan diuji untuk mencari nilai optimal"
+    )
+    
+    # Checkbox untuk clustering otomatis atau manual
+    auto_clustering = st.sidebar.checkbox(
+        "Clustering Otomatis",
+        value=True,
+        help="Jika dicentang, sistem akan otomatis memilih jumlah cluster terbaik berdasarkan Silhouette Score"
+    )
+    
+    if not auto_clustering:
+        manual_clusters = st.sidebar.slider(
+            "Jumlah Cluster Manual",
+            min_value=2,
+            max_value=max_clusters_test,
+            value=3,
+            help="Pilih jumlah cluster secara manual"
+        )
+    
+    # Tombol untuk menjalankan analisis
+    if st.sidebar.button("🚀 Jalankan Analisis", type="primary"):
         
-        col1, col2, col3 = st.columns(3)
+        # Progress bar untuk menunjukkan kemajuan analisis
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Langkah 1: Preprocessing data
+        status_text.text("Memproses data...")
+        progress_bar.progress(20)
+        
+        X_processed, X_scaled, df_encoded, scaler, pca, categorical_cols, numerical_cols = preprocess_data(df, pca_variance)
+        
+        # Langkah 2: Mencari cluster optimal
+        status_text.text("Mencari jumlah cluster optimal...")
+        progress_bar.progress(40)
+        
+        k_range, inertia_values, silhouette_scores = find_optimal_clusters(X_processed, max_clusters_test)
+        
+        # Menentukan jumlah cluster
+        if auto_clustering:
+            optimal_k = k_range[np.argmax(silhouette_scores)]
+            optimal_score = max(silhouette_scores)
+        else:
+            optimal_k = manual_clusters
+            # Mencari silhouette score untuk cluster manual
+            kmeans_temp = KMeans(n_clusters=optimal_k, random_state=42, n_init=10)
+            labels_temp = kmeans_temp.fit_predict(X_processed)
+            optimal_score = silhouette_score(X_processed, labels_temp)
+        
+        # Langkah 3: Melakukan clustering final
+        status_text.text("Melakukan clustering final...")
+        progress_bar.progress(60)
+        
+        kmeans_final, cluster_labels = perform_clustering(X_processed, optimal_k)
+        
+        # Menambahkan hasil clustering ke dataframe
+        df['Cluster'] = cluster_labels
+        
+        # Langkah 4: Mempersiapkan visualisasi
+        status_text.text("Mempersiapkan visualisasi...")
+        progress_bar.progress(80)
+        
+        # PCA 2D untuk visualisasi
+        pca_2d = PCA(n_components=2)
+        X_pca_2d = pca_2d.fit_transform(X_scaled)
+        
+        # Clustering untuk visualisasi 2D
+        kmeans_2d, cluster_labels_2d = perform_clustering(X_pca_2d, optimal_k)
+        
+        progress_bar.progress(100)
+        status_text.text("Analisis selesai!")
+        
+        # Menyimpan hasil dalam session state untuk persistensi
+        st.session_state.analysis_complete = True
+        st.session_state.df_clustered = df.copy()
+        st.session_state.optimal_k = optimal_k
+        st.session_state.optimal_score = optimal_score
+        st.session_state.k_range = k_range
+        st.session_state.inertia_values = inertia_values
+        st.session_state.silhouette_scores = silhouette_scores
+        st.session_state.X_pca_2d = X_pca_2d
+        st.session_state.cluster_labels_2d = cluster_labels_2d
+        st.session_state.pca_2d = pca_2d
+        st.session_state.numerical_cols = numerical_cols
+        st.session_state.categorical_cols = categorical_cols
+        st.session_state.pca_variance_used = sum(pca.explained_variance_ratio_)
+        
+        # Menghapus progress bar dan status text
+        progress_bar.empty()
+        status_text.empty()
+
+# Menampilkan hasil analisis jika sudah selesai
+if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_complete:
+    
+    # Mengambil data dari session state
+    df_clustered = st.session_state.df_clustered
+    optimal_k = st.session_state.optimal_k
+    optimal_score = st.session_state.optimal_score
+    k_range = st.session_state.k_range
+    inertia_values = st.session_state.inertia_values
+    silhouette_scores = st.session_state.silhouette_scores
+    X_pca_2d = st.session_state.X_pca_2d
+    cluster_labels_2d = st.session_state.cluster_labels_2d
+    pca_2d = st.session_state.pca_2d
+    numerical_cols = st.session_state.numerical_cols
+    pca_variance_used = st.session_state.pca_variance_used
+    
+    # Menampilkan ringkasan hasil
+    st.markdown('<div class="section-header">📊 Ringkasan Hasil Clustering</div>', unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            label="Jumlah Cluster Optimal",
+            value=optimal_k,
+            help="Jumlah cluster yang memberikan hasil terbaik berdasarkan Silhouette Score"
+        )
+    
+    with col2:
+        st.metric(
+            label="Silhouette Score",
+            value=f"{optimal_score:.3f}",
+            help="Skor kualitas clustering (semakin mendekati 1, semakin baik)"
+        )
+    
+    with col3:
+        st.metric(
+            label="Varians PCA",
+            value=f"{pca_variance_used:.1%}",
+            help="Persentase varians data yang dipertahankan setelah reduksi dimensi"
+        )
+    
+    with col4:
+        st.metric(
+            label="Total Negara",
+            value=len(df_clustered),
+            help="Jumlah total negara yang dianalisis"
+        )
+    
+    # Tab untuk berbagai analisis
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🎯 Pemilihan Cluster", 
+        "🌍 Visualisasi 2D", 
+        "📈 Distribusi Cluster",
+        "🔍 Profil Cluster",
+        "📋 Data Detail"
+    ])
+    
+    with tab1:
+        st.markdown('<div class="section-header">Analisis Pemilihan Jumlah Cluster</div>', unsafe_allow_html=True)
+        
+        # Membuat subplot untuk Elbow Method dan Silhouette Score
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=('Elbow Method', 'Silhouette Score'),
+            specs=[[{"secondary_y": False}, {"secondary_y": False}]]
+        )
+        
+        # Elbow Method
+        fig.add_trace(
+            go.Scatter(
+                x=list(k_range), 
+                y=inertia_values,
+                mode='lines+markers',
+                name='Inertia',
+                line=dict(color='blue', width=3),
+                marker=dict(size=8)
+            ),
+            row=1, col=1
+        )
+        
+        # Silhouette Score
+        fig.add_trace(
+            go.Scatter(
+                x=list(k_range), 
+                y=silhouette_scores,
+                mode='lines+markers',
+                name='Silhouette Score',
+                line=dict(color='red', width=3),
+                marker=dict(size=8)
+            ),
+            row=1, col=2
+        )
+        
+        # Menandai cluster optimal
+        fig.add_vline(
+            x=optimal_k, 
+            line_dash="dash", 
+            line_color="green",
+            annotation_text=f"Optimal: {optimal_k}",
+            row=1, col=2
+        )
+        
+        fig.update_layout(
+            height=400,
+            title_text="Analisis Pemilihan Jumlah Cluster",
+            showlegend=False
+        )
+        
+        fig.update_xaxes(title_text="Jumlah Cluster (k)", row=1, col=1)
+        fig.update_xaxes(title_text="Jumlah Cluster (k)", row=1, col=2)
+        fig.update_yaxes(title_text="Inertia", row=1, col=1)
+        fig.update_yaxes(title_text="Silhouette Score", row=1, col=2)
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Interpretasi hasil
+        st.markdown('<div class="info-box">', unsafe_allow_html=True)
+        st.markdown(f"""
+        **Interpretasi Hasil:**
+        
+        **Elbow Method** membantu kita mengidentifikasi titik di mana penambahan cluster tidak memberikan penurunan inertia yang signifikan lagi. Pada grafik ini, kita dapat melihat "siku" atau titik belok yang menunjukkan jumlah cluster yang efisien.
+        
+        **Silhouette Score** mengukur seberapa baik setiap data point cocok dengan cluster-nya dibandingkan dengan cluster lain. Skor berkisar dari -1 hingga 1, di mana:
+        - Nilai mendekati 1: Data point sangat cocok dengan cluster-nya
+        - Nilai mendekati 0: Data point berada di perbatasan antar cluster
+        - Nilai negatif: Data point mungkin ditempatkan di cluster yang salah
+        
+        Berdasarkan analisis, **{optimal_k} cluster** memberikan Silhouette Score terbaik sebesar **{optimal_score:.3f}**.
+        """)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with tab2:
+        st.markdown('<div class="section-header">Visualisasi Clustering 2D</div>', unsafe_allow_html=True)
+        
+        # Membuat DataFrame untuk visualisasi
+        df_vis = pd.DataFrame({
+            'PC1': X_pca_2d[:, 0],
+            'PC2': X_pca_2d[:, 1],
+            'Cluster': cluster_labels_2d,
+            'Country': df_clustered['country'],
+            'WHO_Region': df_clustered['who_region']
+        })
+        
+        # Scatter plot interaktif
+        fig = px.scatter(
+            df_vis, 
+            x='PC1', 
+            y='PC2', 
+            color='Cluster',
+            hover_data=['Country', 'WHO_Region'],
+            title=f'Hasil Clustering K-Means (Visualisasi 2D) - {optimal_k} Cluster',
+            color_continuous_scale='viridis'
+        )
+        
+        fig.update_layout(
+            xaxis_title=f'Komponen 1 ({pca_2d.explained_variance_ratio_[0]:.1%} varians)',
+            yaxis_title=f'Komponen 2 ({pca_2d.explained_variance_ratio_[1]:.1%} varians)',
+            height=600
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Informasi PCA
+        st.markdown('<div class="info-box">', unsafe_allow_html=True)
+        st.markdown(f"""
+        **Tentang Visualisasi 2D:**
+        
+        Visualisasi ini menggunakan **Principal Component Analysis (PCA)** untuk mereduksi data multidimensi menjadi 2 dimensi agar dapat ditampilkan dalam grafik. 
+        
+        - **Komponen 1** menjelaskan {pca_2d.explained_variance_ratio_[0]:.1%} dari total variasi dalam data
+        - **Komponen 2** menjelaskan {pca_2d.explained_variance_ratio_[1]:.1%} dari total variasi dalam data
+        - **Total variasi yang dijelaskan:** {sum(pca_2d.explained_variance_ratio_):.1%}
+        
+        Setiap titik mewakili satu negara, dan warna menunjukkan cluster yang ditetapkan. Negara-negara yang berdekatan dalam grafik memiliki karakteristik mpox yang serupa.
+        """)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with tab3:
+        st.markdown('<div class="section-header">Distribusi dan Karakteristik Cluster</div>', unsafe_allow_html=True)
+        
+        # Distribusi negara per cluster
+        cluster_distribution = df_clustered['Cluster'].value_counts().sort_index()
+        
+        col1, col2 = st.columns(2)
         
         with col1:
-            st.metric("Jumlah Negara", df.shape[0])
+            # Pie chart distribusi cluster
+            fig_pie = px.pie(
+                values=cluster_distribution.values,
+                names=[f'Cluster {i}' for i in cluster_distribution.index],
+                title='Distribusi Negara per Cluster'
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+        
         with col2:
-            st.metric("Jumlah Fitur", df.shape[1])
-        with col3:
-            st.metric("Data Hilang", df.isnull().sum().sum())
+            # Bar chart distribusi WHO Region per cluster
+            fig_bar = px.histogram(
+                df_clustered, 
+                x='Cluster', 
+                color='who_region',
+                title='Distribusi WHO Region per Cluster',
+                barmode='group'
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
         
-        # Tampilkan preview data
-        st.markdown("### 👀 Preview Dataset")
-        st.dataframe(df.head(10), use_container_width=True)
+        # Tabel distribusi detail
+        st.markdown("### 📊 Distribusi Detail per Cluster")
         
-        # Informasi kolom
-        st.markdown("### 📋 Informasi Kolom")
-        col_info = pd.DataFrame({
-            'Kolom': df.columns,
-            'Tipe Data': df.dtypes,
-            'Nilai Null': df.isnull().sum(),
-            'Contoh Nilai': [df[col].iloc[0] if not pd.isna(df[col].iloc[0]) else 'N/A' for col in df.columns]
-        })
-        st.dataframe(col_info, use_container_width=True)
-        
-        # Statistik deskriptif untuk fitur numerik
-        if len(kolom_numerik) > 0:
-            st.markdown("### 📊 Statistik Deskriptif Fitur Numerik")
-            st.dataframe(df[kolom_numerik].describe(), use_container_width=True)
-        
-        # Distribusi WHO Region
-        if 'who_region' in df.columns:
-            st.markdown("### 🌍 Distribusi WHO Region")
-            region_counts = df['who_region'].value_counts()
-            fig = px.bar(x=region_counts.index, y=region_counts.values,
-                         title="Jumlah Negara per WHO Region")
-            fig.update_xaxes(title="WHO Region")
-            fig.update_yaxes(title="Jumlah Negara")
-            st.plotly_chart(fig, use_container_width=True)
-    
-    # Bagian 2: Penentuan Cluster Optimal
-    elif selected_section == "🎯 Penentuan Cluster Optimal":
-        st.markdown('<h2 class="sub-header">🎯 Penentuan Jumlah Cluster Optimal</h2>', 
-                    unsafe_allow_html=True)
-        
-        # Parameter untuk analisis cluster
-        max_k = st.sidebar.slider("Maksimal Jumlah Cluster", 5, 15, 10)
-        
-        if st.button("🔍 Analisis Cluster Optimal"):
-            with st.spinner("Mencari jumlah cluster optimal..."):
-                jumlah_k, inertia_values, silhouette_scores, k_optimal = find_optimal_clusters(X_scaled, max_k)
-            
-            # Tampilkan hasil
-            st.success(f"🏆 Jumlah cluster optimal: **{k_optimal}** dengan Silhouette Score: **{max(silhouette_scores):.3f}**")
-            
-            # Plot pemilihan cluster
-            fig = create_cluster_selection_plot(jumlah_k, inertia_values, silhouette_scores, k_optimal)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Tabel hasil
-            results_df = pd.DataFrame({
-                'Jumlah Cluster': jumlah_k,
-                'Inertia': inertia_values,
-                'Silhouette Score': silhouette_scores
+        distribution_data = []
+        for cluster_id in sorted(df_clustered['Cluster'].unique()):
+            cluster_data = df_clustered[df_clustered['Cluster'] == cluster_id]
+            distribution_data.append({
+                'Cluster': cluster_id,
+                'Jumlah Negara': len(cluster_data),
+                'Persentase': f"{(len(cluster_data)/len(df_clustered)*100):.1f}%",
+                'Negara Contoh': ', '.join(cluster_data['country'].head(3).tolist())
             })
-            st.markdown("### 📊 Tabel Hasil Evaluasi")
-            st.dataframe(results_df, use_container_width=True)
-            
-            # Simpan k_optimal di session state
-            st.session_state.k_optimal = k_optimal
+        
+        distribution_df = pd.DataFrame(distribution_data)
+        st.dataframe(distribution_df, use_container_width=True)
     
-    # Bagian 3: Hasil Clustering
-    elif selected_section == "🎨 Hasil Clustering":
-        st.markdown('<h2 class="sub-header">🎨 Hasil Clustering</h2>', 
-                    unsafe_allow_html=True)
+    with tab4:
+        st.markdown('<div class="section-header">Profil Karakteristik Cluster</div>', unsafe_allow_html=True)
         
-        # Gunakan k_optimal dari session state atau default
-        k_optimal = st.session_state.get('k_optimal', 3)
+        # Analisis rata-rata fitur numerik per cluster
+        numeric_features = [col for col in numerical_cols if col in df_clustered.columns]
         
-        # Opsi untuk mengubah jumlah cluster
-        k_selected = st.sidebar.slider("Jumlah Cluster", 2, 10, k_optimal)
-        
-        if st.button("🎨 Lakukan Clustering"):
-            with st.spinner("Melakukan clustering..."):
-                cluster_labels, silhouette_final, kmeans = perform_final_clustering(X_scaled, k_selected)
-                X_pca, pca = perform_pca(X_scaled, 2)
+        if numeric_features:
+            cluster_profiles = df_clustered.groupby('Cluster')[numeric_features].mean()
             
-            # Tampilkan metrik kualitas
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Jumlah Cluster", k_selected)
-            with col2:
-                st.metric("Silhouette Score", f"{silhouette_final:.3f}")
-            with col3:
-                st.metric("Variance Explained", f"{sum(pca.explained_variance_ratio_):.1%}")
+            # Heatmap profil cluster
+            fig_heatmap = px.imshow(
+                cluster_profiles.T,
+                title='Profil Karakteristik Cluster (Rata-rata)',
+                labels=dict(x="Cluster", y="Fitur", color="Nilai Rata-rata"),
+                aspect="auto"
+            )
+            st.plotly_chart(fig_heatmap, use_container_width=True)
             
-            # Distribusi cluster
-            st.markdown("### 📊 Distribusi Negara per Cluster")
-            cluster_counts = pd.Series(cluster_labels).value_counts().sort_index()
+            # Tabel profil cluster
+            st.markdown("### 📋 Profil Numerik Detail per Cluster")
+            st.dataframe(cluster_profiles, use_container_width=True)
             
-            col1, col2 = st.columns(2)
+            # Box plots untuk fitur numerik
+            st.markdown("### 📦 Distribusi Fitur Numerik per Cluster")
             
-            with col1:
-                fig = px.bar(x=cluster_counts.index, y=cluster_counts.values,
-                             title="Jumlah Negara per Cluster")
-                fig.update_xaxes(title="Cluster")
-                fig.update_yaxes(title="Jumlah Negara")
-                st.plotly_chart(fig, use_container_width=True)
+            selected_feature = st.selectbox(
+                "Pilih fitur untuk analisis distribusi:",
+                numeric_features,
+                help="Pilih fitur numerik untuk melihat distribusinya pada setiap cluster"
+            )
             
-            with col2:
-                fig = px.pie(values=cluster_counts.values, names=cluster_counts.index,
-                             title="Proporsi Negara per Cluster")
-                st.plotly_chart(fig, use_container_width=True)
+            fig_box = px.box(
+                df_clustered, 
+                x='Cluster', 
+                y=selected_feature,
+                title=f'Distribusi {selected_feature} per Cluster'
+            )
+            st.plotly_chart(fig_box, use_container_width=True)
             
-            # Visualisasi PCA
-            st.markdown("### 🗺️ Visualisasi PCA 2D")
-            fig_pca = create_pca_visualization(X_pca, cluster_labels, pca)
-            st.plotly_chart(fig_pca, use_container_width=True)
+            # Interpretasi cluster
+            st.markdown("### 🔍 Interpretasi Cluster")
             
-            # Tabel negara per cluster
-            st.markdown("### 🌍 Daftar Negara per Cluster")
-            df_result = df.copy()
-            df_result['Cluster'] = cluster_labels
-            
-            for cluster_id in sorted(df_result['Cluster'].unique()):
-                with st.expander(f"Cluster {cluster_id} ({sum(cluster_labels == cluster_id)} negara)"):
-                    cluster_countries = df_result[df_result['Cluster'] == cluster_id]['country'].tolist()
-                    st.write(", ".join(cluster_countries))
-            
-            # Simpan hasil di session state
-            st.session_state.cluster_labels = cluster_labels
-            st.session_state.df_result = df_result
-            st.session_state.silhouette_final = silhouette_final
-    
-    # Bagian 4: Analisis Fitur
-    elif selected_section == "📈 Analisis Fitur":
-        st.markdown('<h2 class="sub-header">📈 Analisis Fitur per Cluster</h2>', 
-                    unsafe_allow_html=True)
-        
-        # Cek apakah clustering sudah dilakukan
-        if 'cluster_labels' in st.session_state:
-            cluster_labels = st.session_state.cluster_labels
-            df_result = st.session_state.df_result
-            
-            # Analisis fitur numerik
-            if len(kolom_numerik) > 0:
-                st.markdown("### 📊 Distribusi Fitur Numerik per Cluster")
+            for cluster_id in sorted(df_clustered['Cluster'].unique()):
+                cluster_data = df_clustered[df_clustered['Cluster'] == cluster_id]
                 
-                # Pilih fitur untuk dianalisis
-                selected_features = st.multiselect(
-                    "Pilih fitur untuk dianalisis:",
-                    list(kolom_numerik),
-                    default=list(kolom_numerik)[:3]  # Default 3 fitur pertama
-                )
-                
-                if selected_features:
-                    # Box plots
-                    for feature in selected_features:
-                        fig = px.box(df_result, x='Cluster', y=feature,
-                                     title=f'Distribusi {feature} per Cluster')
-                        st.plotly_chart(fig, use_container_width=True)
+                with st.expander(f"Cluster {cluster_id} ({len(cluster_data)} negara)"):
                     
-                    # Tabel rata-rata per cluster
-                    st.markdown("### 📊 Rata-rata Fitur per Cluster")
-                    feature_means = df_result.groupby('Cluster')[selected_features].mean()
-                    st.dataframe(feature_means, use_container_width=True)
-                    
-                    # Heatmap
-                    st.markdown("### 🌡️ Heatmap Rata-rata Fitur per Cluster")
-                    fig = px.imshow(feature_means.T, 
-                                    labels=dict(x="Cluster", y="Fitur", color="Nilai"),
-                                    title="Heatmap Rata-rata Fitur per Cluster")
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            # Analisis WHO Region
-            if 'who_region' in df_result.columns:
-                st.markdown("### 🌍 Distribusi WHO Region per Cluster")
-                
-                # Crosstab
-                crosstab = pd.crosstab(df_result['Cluster'], df_result['who_region'])
-                
-                # Stacked bar chart
-                fig = px.bar(crosstab, title="Distribusi WHO Region per Cluster")
-                fig.update_xaxes(title="Cluster")
-                fig.update_yaxes(title="Jumlah Negara")
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Tabel crosstab
-                st.dataframe(crosstab, use_container_width=True)
-        
-        else:
-            st.warning("⚠️ Silakan lakukan clustering terlebih dahulu di bagian 'Hasil Clustering'")
-    
-    # Bagian 5: Profil Cluster
-    elif selected_section == "🔍 Profil Cluster":
-        st.markdown('<h2 class="sub-header">🔍 Profil Karakteristik Cluster</h2>', 
-                    unsafe_allow_html=True)
-        
-        # Cek apakah clustering sudah dilakukan
-        if 'cluster_labels' in st.session_state:
-            cluster_labels = st.session_state.cluster_labels
-            df_result = st.session_state.df_result
-            
-            # Profil umum
-            st.markdown("### 📋 Ringkasan Profil Cluster")
-            
-            for cluster_id in sorted(df_result['Cluster'].unique()):
-                cluster_data = df_result[df_result['Cluster'] == cluster_id]
-                
-                with st.expander(f"🔎 Cluster {cluster_id} - {len(cluster_data)} negara"):
+                    # Statistik dasar
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.markdown("**Karakteristik Numerik:**")
-                        if len(kolom_numerik) > 0:
-                            cluster_stats = cluster_data[kolom_numerik].agg(['mean', 'std', 'min', 'max'])
-                            st.dataframe(cluster_stats.round(2))
+                        st.markdown("**Negara-negara dalam cluster:**")
+                        countries_list = cluster_data['country'].tolist()
+                        for i in range(0, len(countries_list), 3):
+                            st.write(", ".join(countries_list[i:i+3]))
                     
                     with col2:
-                        st.markdown("**Contoh Negara:**")
-                        sample_countries = cluster_data['country'].head(5).tolist()
-                        for country in sample_countries:
-                            st.write(f"• {country}")
-                        
-                        if 'who_region' in cluster_data.columns:
-                            st.markdown("**WHO Region Dominan:**")
-                            region_counts = cluster_data['who_region'].value_counts()
-                            st.write(f"• {region_counts.index[0]} ({region_counts.iloc[0]} negara)")
-            
-            # Perbandingan antar cluster
-            st.markdown("### ⚖️ Perbandingan Karakteristik Antar Cluster")
-            
-            if len(kolom_numerik) > 0:
-                # Radar chart
-                cluster_means = df_result.groupby('Cluster')[kolom_numerik].mean()
-                
-                fig = go.Figure()
-                
-                for cluster_id in cluster_means.index:
-                    fig.add_trace(go.Scatterpolar(
-                        r=cluster_means.loc[cluster_id].values,
-                        theta=cluster_means.columns,
-                        fill='toself',
-                        name=f'Cluster {cluster_id}'
-                    ))
-                
-                fig.update_layout(
-                    polar=dict(
-                        radialaxis=dict(
-                            visible=True,
-                        )),
-                    showlegend=True,
-                    title="Perbandingan Karakteristik Cluster (Radar Chart)"
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-            
-            # Download hasil clustering
-            st.markdown("### 💾 Unduh Hasil Clustering")
-            
-            # Konversi ke CSV
-            csv_data = df_result.to_csv(index=False)
-            
-            st.download_button(
-                label="📄 Unduh Hasil Clustering (CSV)",
-                data=csv_data,
-                file_name=f"mpox_clustering_results_{len(set(cluster_labels))}_clusters.csv",
-                mime="text/csv"
-            )
-            
-            # Ringkasan kualitas clustering
-            st.markdown("### 📊 Kualitas Clustering")
-            silhouette_final = st.session_state.get('silhouette_final', 0)
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Silhouette Score", f"{silhouette_final:.3f}")
-            with col2:
-                st.metric("Jumlah Cluster", len(set(cluster_labels)))
-            with col3:
-                st.metric("Total Negara", len(cluster_labels))
-            
-            # Interpretasi hasil
-            st.markdown("### 🎯 Interpretasi Hasil")
-            
-            if silhouette_final > 0.7:
-                st.success("🎉 Clustering berkualitas sangat baik! Cluster terbentuk dengan pemisahan yang jelas.")
-            elif silhouette_final > 0.5:
-                st.info("👍 Clustering berkualitas baik. Terdapat struktur cluster yang dapat diidentifikasi.")
-            elif silhouette_final > 0.3:
-                st.warning("⚠️ Clustering berkualitas sedang. Mungkin perlu penyesuaian parameter.")
-            else:
-                st.error("❌ Clustering berkualitas rendah. Pertimbangkan untuk menggunakan metode lain.")
+                        st.markdown("**Distribusi WHO Region:**")
+                        region_counts = cluster_data['who_region'].value_counts()
+                        for region, count in region_counts.items():
+                            st.write(f"- {region}: {count} negara")
+                    
+                    # Karakteristik utama
+                    st.markdown("**Karakteristik Utama:**")
+                    cluster_profile = cluster_profiles.loc[cluster_id]
+                    
+                    # Mencari fitur dengan nilai tertinggi dan terendah
+                    highest_feature = cluster_profile.idxmax()
+                    lowest_feature = cluster_profile.idxmin()
+                    
+                    st.write(f"- Fitur tertinggi: {highest_feature} ({cluster_profile[highest_feature]:.2f})")
+                    st.write(f"- Fitur terendah: {lowest_feature} ({cluster_profile[lowest_feature]:.2f})")
+    
+    with tab5:
+        st.markdown('<div class="section-header">Data Detail dengan Hasil Clustering</div>', unsafe_allow_html=True)
         
+        # Filter data berdasarkan cluster
+        selected_clusters = st.multiselect(
+            "Filter berdasarkan Cluster:",
+            options=sorted(df_clustered['Cluster'].unique()),
+            default=sorted(df_clustered['Cluster'].unique()),
+            help="Pilih cluster yang ingin ditampilkan dalam tabel"
+        )
+        
+        if selected_clusters:
+            filtered_data = df_clustered[df_clustered['Cluster'].isin(selected_clusters)]
         else:
-            st.warning("⚠️ Silakan lakukan clustering terlebih dahulu di bagian 'Hasil Clustering'")
-
-# Memuat data dengan error handling yang lebih baik
-st.markdown("### 📊 Status Loading Dataset")
-
-with st.spinner("Memuat dan memproses data..."):
-    result = load_and_process_data()
-
-# Unpack the results
-if result[0] is not None:  # If df is not None
-    df, df_encoded, X_scaled, kolom_numerik, scaler = result
-    
-    # Continue with the rest of your application logic
-    # (All your existing sections: Gambaran Data, Penentuan Cluster Optimal, etc.)
-    
-    # Bagian 1: Gambaran Data
-    if selected_section == "📊 Gambaran Data":
-        st.markdown('<h2 class="sub-header">📊 Gambaran Umum Dataset</h2>', 
-                    unsafe_allow_html=True)
+            filtered_data = df_clustered
+        
+        # Menampilkan tabel data
+        st.dataframe(filtered_data, use_container_width=True)
+        
+        # Statistik ringkasan
+        st.markdown("### 📊 Statistik Ringkasan Data Terpilih")
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.metric("Jumlah Negara", df.shape[0])
+            st.metric("Jumlah Negara", len(filtered_data))
+        
         with col2:
-            st.metric("Jumlah Fitur", df.shape[1])
+            if 'total_confirmed_cases' in filtered_data.columns:
+                st.metric("Total Kasus Terkonfirmasi", f"{filtered_data['total_confirmed_cases'].sum():,}")
+        
         with col3:
-            st.metric("Data Hilang", df.isnull().sum().sum())
+            if 'total_deaths' in filtered_data.columns:
+                st.metric("Total Kematian", f"{filtered_data['total_deaths'].sum():,}")
         
-        # ... rest of your existing code for this section
-        
-    # Continue with all your other sections exactly as they were
-    # (I'm not repeating them all here, but they stay the same)
+        # Opsi download data
+        csv = filtered_data.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Data Hasil Clustering (CSV)",
+            data=csv,
+            file_name=f"mpox_clustering_results_{optimal_k}_clusters.csv",
+            mime="text/csv"
+        )
 
 else:
-    # This else block will now rarely be reached because the improved function
-    # handles errors more gracefully and provides the file upload option
-    st.error("❌ Tidak dapat memuat dataset dari semua sumber yang tersedia.")
-    st.info("""
-    Aplikasi tidak dapat melanjutkan tanpa dataset. Silakan:
-    1. Periksa koneksi internet Anda
-    2. Pastikan file CSV tersedia di direktori aplikasi
-    3. Gunakan fitur upload manual yang tersedia di atas
-    4. Restart aplikasi Streamlit dan coba lagi
+    # Menampilkan informasi awal jika belum ada analisis
+    st.markdown('<div class="info-box">', unsafe_allow_html=True)
+    st.markdown("""
+    ## 👋 Selamat Datang di Aplikasi Analisis Clustering Mpox
+    
+    Aplikasi ini memungkinkan Anda untuk melakukan analisis clustering pada data kasus mpox per negara dengan berbagai parameter yang dapat disesuaikan.
+    
+    ### 🚀 Cara Menggunakan:
+    1. **Pastikan dataset tersedia** - File "mpox cases by country as of 30 June 2024.csv" harus ada di direktori yang sama
+    2. **Atur parameter** di sidebar sesuai kebutuhan analisis Anda
+    3. **Klik tombol "Jalankan Analisis"** untuk memulai clustering
+    4. **Eksplorasi hasil** melalui berbagai tab visualisasi yang tersedia
+    
+    ### 🔧 Fitur Utama:
+    - **PCA (Principal Component Analysis)** untuk reduksi dimensi
+    - **K-Means Clustering** dengan optimasi otomatis atau manual
+    - **Visualisasi interaktif** menggunakan Plotly
+    - **Analisis profil cluster** yang mendalam
+    - **Export hasil** dalam format CSV
+    
+    ### 📊 Metrik Evaluasi:
+    - **Elbow Method** untuk menentukan jumlah cluster optimal
+    - **Silhouette Score** untuk mengukur kualitas clustering
+    - **Distribusi cluster** berdasarkan wilayah WHO
+    
+    Gunakan panel kontrol di sidebar untuk memulai analisis!
     """)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Menampilkan preview data jika tersedia
+    if df is not None:
+        st.markdown("### 👀 Preview Dataset")
+        st.dataframe(df.head(), use_container_width=True)
+        
+        # Informasi kolom
+        st.markdown("### 📋 Informasi Kolom Dataset")
+        col_info = pd.DataFrame({
+            'Kolom': df.columns,
+            'Tipe Data': df.dtypes,
+            'Jumlah Non-Null': df.count(),
+            'Jumlah Null': df.isnull().sum()
+        })
+        st.dataframe(col_info, use_container_width=True)
