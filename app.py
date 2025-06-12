@@ -64,6 +64,10 @@ def load_data():
     try:
         # Mencoba memuat data dari file lokal
         df = pd.read_csv("mpox cases by country as of 30 June 2024.csv")
+        # Mengubah kolom 'date' menjadi datetime
+        df['date'] = pd.to_datetime(df['date'])
+        # Mengambil data terbaru untuk setiap negara
+        df = df.sort_values(by='date').drop_duplicates(subset=['country'], keep='last')
         return df
     except FileNotFoundError:
         st.error("Dataset tidak ditemukan! Pastikan file 'mpox cases by country as of 30 June 2024.csv' ada di direktori yang sama dengan app.py")
@@ -82,7 +86,7 @@ def preprocess_data(df, pca_variance=0.95):
         Tuple berisi data yang telah diproses dan objek-objek preprocessing
     """
     # Menghapus kolom identifier
-    df_features = df.drop(columns=["country"])
+    df_features = df.drop(columns=["country", "date", "iso3", "who_region"])
     
     # Identifikasi kolom kategori dan numerik
     categorical_cols = df_features.select_dtypes(include=["object"]).columns
@@ -145,7 +149,7 @@ def perform_clustering(X, n_clusters, random_state=42):
     return kmeans, labels
 
 # Header utama aplikasi
-st.markdown('<h1 class="main-header">🔬 Analisis Clustering Mpox Kasus Per Negara</h1>', unsafe_allow_html=True)
+st.markdown("<h1 class=\"main-header\">🔬 Analisis Clustering Mpox Kasus Per Negara</h1>", unsafe_allow_html=True)
 
 # Sidebar untuk kontrol parameter
 st.sidebar.markdown("## ⚙️ Pengaturan Clustering")
@@ -210,7 +214,8 @@ if df is not None:
         status_text.text("Memproses data...")
         progress_bar.progress(20)
         
-        X_processed, X_scaled, df_encoded, scaler, pca, categorical_cols, numerical_cols = preprocess_data(df, pca_variance)
+        # Menghapus kolom 'date', 'iso3', 'who_region' dari df_features
+        X_processed, X_scaled, df_encoded, scaler, pca, categorical_cols, numerical_cols = preprocess_data(df.copy(), pca_variance)
         
         # Langkah 2: Mencari cluster optimal
         status_text.text("Mencari jumlah cluster optimal...")
@@ -236,7 +241,7 @@ if df is not None:
         kmeans_final, cluster_labels = perform_clustering(X_processed, optimal_k)
         
         # Menambahkan hasil clustering ke dataframe
-        df['Cluster'] = cluster_labels
+        df["Cluster"] = cluster_labels
         
         # Langkah 4: Mempersiapkan visualisasi
         status_text.text("Mempersiapkan visualisasi...")
@@ -288,7 +293,7 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
     pca_variance_used = st.session_state.pca_variance_used
     
     # Menampilkan ringkasan hasil
-    st.markdown('<div class="section-header">📊 Ringkasan Hasil Clustering</div>', unsafe_allow_html=True)
+    st.markdown("<div class=\"section-header\">📊 Ringkasan Hasil Clustering</div>", unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -330,7 +335,7 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
     ])
     
     with tab1:
-        st.markdown('<div class="section-header">Analisis Pemilihan Jumlah Cluster</div>', unsafe_allow_html=True)
+        st.markdown("<div class=\"section-header\">Analisis Pemilihan Jumlah Cluster</div>", unsafe_allow_html=True)
         
         # Membuat subplot untuk Elbow Method dan Silhouette Score
         fig = make_subplots(
@@ -388,7 +393,7 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
         st.plotly_chart(fig, use_container_width=True)
         
         # Interpretasi hasil
-        st.markdown('<div class="info-box">', unsafe_allow_html=True)
+        st.markdown("<div class=\"info-box\">", unsafe_allow_html=True)
         st.markdown(f"""
         **Interpretasi Hasil:**
         
@@ -401,10 +406,10 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
         
         Berdasarkan analisis, **{optimal_k} cluster** memberikan Silhouette Score terbaik sebesar **{optimal_score:.3f}**.
         """)
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
     
     with tab2:
-        st.markdown('<div class="section-header">Visualisasi Clustering 2D</div>', unsafe_allow_html=True)
+        st.markdown("<div class=\"section-header\">Visualisasi Clustering 2D</div>", unsafe_allow_html=True)
         
         # Membuat DataFrame untuk visualisasi
         df_vis = pd.DataFrame({
@@ -434,23 +439,23 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Informasi PCA
-        st.markdown('<div class="info-box">', unsafe_allow_html=True)
+        # Interpretasi hasil
+        st.markdown("<div class=\"info-box\">", unsafe_allow_html=True)
         st.markdown(f"""
-        **Tentang Visualisasi 2D:**
+        **Interpretasi Visualisasi 2D:**
         
-        Visualisasi ini menggunakan **Principal Component Analysis (PCA)** untuk mereduksi data multidimensi menjadi 2 dimensi agar dapat ditampilkan dalam grafik. 
+        Visualisasi ini menggunakan **Principal Component Analysis (PCA)** untuk mereduksi data multidimensi menjadi 2 dimensi agar dapat ditampilkan dalam grafik. Setiap titik mewakili satu negara, dan warna menunjukkan cluster yang ditetapkan. Negara-negara yang berdekatan dalam grafik memiliki karakteristik Mpox yang serupa.
         
-        - **Komponen 1** menjelaskan {pca_2d.explained_variance_ratio_[0]:.1%} dari total variasi dalam data
-        - **Komponen 2** menjelaskan {pca_2d.explained_variance_ratio_[1]:.1%} dari total variasi dalam data
-        - **Total variasi yang dijelaskan:** {sum(pca_2d.explained_variance_ratio_):.1%}
+        - **Komponen 1** menjelaskan {pca_2d.explained_variance_ratio_[0]:.1%} dari total variasi dalam data.
+        - **Komponen 2** menjelaskan {pca_2d.explained_variance_ratio_[1]:.1%} dari total variasi dalam data.
+        - **Total variasi yang dijelaskan oleh 2 komponen ini:** {sum(pca_2d.explained_variance_ratio_):.1%}.
         
-        Setiap titik mewakili satu negara, dan warna menunjukkan cluster yang ditetapkan. Negara-negara yang berdekatan dalam grafik memiliki karakteristik mpox yang serupa.
+        Perhatikan bagaimana negara-negara dengan karakteristik serupa cenderung mengelompok bersama, membentuk cluster yang berbeda. Ini menunjukkan bahwa algoritma K-Means berhasil mengidentifikasi pola-pola tersembunyi dalam data.
         """)
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
     
     with tab3:
-        st.markdown('<div class="section-header">Distribusi dan Karakteristik Cluster</div>', unsafe_allow_html=True)
+        st.markdown("<div class=\"section-header\">Distribusi dan Karakteristik Cluster</div>", unsafe_allow_html=True)
         
         # Distribusi negara per cluster
         cluster_distribution = df_clustered['Cluster'].value_counts().sort_index()
@@ -465,6 +470,13 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
                 title='Distribusi Negara per Cluster'
             )
             st.plotly_chart(fig_pie, use_container_width=True)
+            st.markdown("""
+            <div class="info-box">
+            **Interpretasi Pie Chart Distribusi Cluster:**
+            
+            Pie chart ini menunjukkan proporsi negara yang termasuk dalam setiap cluster. Ukuran setiap irisan merepresentasikan jumlah negara dalam cluster tersebut. Visualisasi ini membantu kita memahami seberapa merata atau tidak merata distribusi negara di antara cluster-cluster yang terbentuk.
+            </div>
+            """, unsafe_allow_html=True)
         
         with col2:
             # Bar chart distribusi WHO Region per cluster
@@ -476,6 +488,13 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
                 barmode='group'
             )
             st.plotly_chart(fig_bar, use_container_width=True)
+            st.markdown("""
+            <div class="info-box">
+            **Interpretasi Bar Chart Distribusi WHO Region per Cluster:**
+            
+            Bar chart ini menampilkan komposisi WHO Region di setiap cluster. Setiap bar mewakili sebuah cluster, dan segmen warna di dalamnya menunjukkan jumlah negara dari masing-masing WHO Region. Ini membantu kita melihat apakah ada cluster yang didominasi oleh negara-negara dari WHO Region tertentu, yang bisa mengindikasikan pola geografis dalam penyebaran Mpox.
+            </div>
+            """, unsafe_allow_html=True)
         
         # Tabel distribusi detail
         st.markdown("### 📊 Distribusi Detail per Cluster")
@@ -492,9 +511,16 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
         
         distribution_df = pd.DataFrame(distribution_data)
         st.dataframe(distribution_df, use_container_width=True)
+        st.markdown("""
+        <div class="info-box">
+        **Interpretasi Tabel Distribusi Detail per Cluster:**
+        
+        Tabel ini memberikan rincian numerik tentang setiap cluster, termasuk jumlah negara, persentase dari total negara, dan beberapa contoh negara yang termasuk dalam cluster tersebut. Ini melengkapi visualisasi di atas dengan data konkret, memungkinkan analisis yang lebih mendalam tentang ukuran dan komposisi setiap cluster.
+        </div>
+        """, unsafe_allow_html=True)
     
     with tab4:
-        st.markdown('<div class="section-header">Profil Karakteristik Cluster</div>', unsafe_allow_html=True)
+        st.markdown("<div class=\"section-header\">Profil Karakteristik Cluster</div>", unsafe_allow_html=True)
         
         # Analisis rata-rata fitur numerik per cluster
         numeric_features = [col for col in numerical_cols if col in df_clustered.columns]
@@ -510,10 +536,24 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
                 aspect="auto"
             )
             st.plotly_chart(fig_heatmap, use_container_width=True)
+            st.markdown("""
+            <div class="info-box">
+            **Interpretasi Heatmap Profil Karakteristik Cluster:**
+            
+            Heatmap ini menampilkan nilai rata-rata dari fitur-fitur numerik untuk setiap cluster. Warna yang lebih gelap atau lebih terang menunjukkan nilai rata-rata yang lebih tinggi atau lebih rendah untuk fitur tertentu dalam cluster tersebut. Ini sangat berguna untuk mengidentifikasi fitur-fitur yang paling membedakan antar cluster, membantu kita memahami karakteristik unik dari setiap kelompok negara.
+            </div>
+            """, unsafe_allow_html=True)
             
             # Tabel profil cluster
             st.markdown("### 📋 Profil Numerik Detail per Cluster")
             st.dataframe(cluster_profiles, use_container_width=True)
+            st.markdown("""
+            <div class="info-box">
+            **Interpretasi Tabel Profil Numerik Detail per Cluster:**
+            
+            Tabel ini menyajikan nilai rata-rata yang tepat untuk setiap fitur numerik di setiap cluster. Ini adalah data mentah yang digunakan untuk membuat heatmap di atas, memungkinkan pemeriksaan detail dan perbandingan antar cluster untuk setiap fitur secara individual.
+            </div>
+            """, unsafe_allow_html=True)
             
             # Box plots untuk fitur numerik
             st.markdown("### 📦 Distribusi Fitur Numerik per Cluster")
@@ -531,6 +571,13 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
                 title=f'Distribusi {selected_feature} per Cluster'
             )
             st.plotly_chart(fig_box, use_container_width=True)
+            st.markdown(f"""
+            <div class="info-box">
+            **Interpretasi Box Plot Distribusi {selected_feature} per Cluster:**
+            
+            Box plot ini menunjukkan distribusi nilai untuk fitur '{selected_feature}' di setiap cluster. Box plot menampilkan median, kuartil, dan potensi outlier, memberikan gambaran tentang sebaran data dalam setiap cluster. Ini membantu kita memahami variabilitas dan perbedaan nilai fitur di antara cluster, serta mengidentifikasi cluster mana yang memiliki nilai ekstrem untuk fitur tertentu.
+            </div>
+            """, unsafe_allow_html=True)
             
             # Interpretasi cluster
             st.markdown("### 🔍 Interpretasi Cluster")
@@ -565,9 +612,16 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
                     
                     st.write(f"- Fitur tertinggi: {highest_feature} ({cluster_profile[highest_feature]:.2f})")
                     st.write(f"- Fitur terendah: {lowest_feature} ({cluster_profile[lowest_feature]:.2f})")
+                    st.markdown("""
+                    <div class="info-box">
+                    **Interpretasi Detail Cluster:**
+                    
+                    Bagian ini memberikan rincian mendalam untuk setiap cluster, termasuk daftar negara anggotanya, distribusi regional, dan fitur-fitur numerik yang paling menonjol (tertinggi dan terendah). Informasi ini krusial untuk memberikan nama atau label yang bermakna pada setiap cluster, serta untuk memahami profil risiko atau karakteristik epidemiologi Mpox yang spesifik untuk kelompok negara tersebut.
+                    </div>
+                    """, unsafe_allow_html=True)
     
     with tab5:
-        st.markdown('<div class="section-header">Data Detail dengan Hasil Clustering</div>', unsafe_allow_html=True)
+        st.markdown("<div class=\"section-header\">Data Detail dengan Hasil Clustering</div>", unsafe_allow_html=True)
         
         # Filter data berdasarkan cluster
         selected_clusters = st.multiselect(
@@ -584,6 +638,13 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
         
         # Menampilkan tabel data
         st.dataframe(filtered_data, use_container_width=True)
+        st.markdown("""
+        <div class="info-box">
+        **Interpretasi Tabel Data Detail:**
+        
+        Tabel ini menampilkan data mentah yang telah digabungkan dengan hasil clustering. Pengguna dapat memfilter data berdasarkan cluster yang dipilih untuk melihat negara-negara spesifik dan data terkait yang termasuk dalam cluster tersebut. Ini adalah alat yang berguna untuk eksplorasi data secara langsung dan memverifikasi hasil clustering.
+        </div>
+        """, unsafe_allow_html=True)
         
         # Statistik ringkasan
         st.markdown("### 📊 Statistik Ringkasan Data Terpilih")
@@ -595,62 +656,24 @@ if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_
         
         with col2:
             if 'total_confirmed_cases' in filtered_data.columns:
-                st.metric("Total Kasus Terkonfirmasi", f"{filtered_data['total_confirmed_cases'].sum():,}")
+                st.metric("Total Kasus Terkonfirmasi", f"{filtered_data['total_confirmed_cases'].sum():,.0f}")
+            else:
+                st.metric("Total Kasus Terkonfirmasi", "N/A")
         
         with col3:
             if 'total_deaths' in filtered_data.columns:
-                st.metric("Total Kematian", f"{filtered_data['total_deaths'].sum():,}")
+                st.metric("Total Kematian", f"{filtered_data['total_deaths'].sum():,.0f}")
+            else:
+                st.metric("Total Kematian", "N/A")
+        st.markdown("""
+        <div class="info-box">
+        **Interpretasi Statistik Ringkasan Data Terpilih:**
         
-        # Opsi download data
-        csv = filtered_data.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Data Hasil Clustering (CSV)",
-            data=csv,
-            file_name=f"mpox_clustering_results_{optimal_k}_clusters.csv",
-            mime="text/csv"
-        )
+        Bagian ini menyajikan ringkasan statistik dari data yang saat ini ditampilkan dalam tabel detail. Ini mencakup jumlah negara, total kasus terkonfirmasi, dan total kematian. Statistik ini diperbarui secara dinamis berdasarkan filter cluster yang diterapkan, memungkinkan pengguna untuk dengan cepat mendapatkan gambaran umum tentang dampak Mpox dalam subset data yang diminati.
+        </div>
+        """, unsafe_allow_html=True)
 
 else:
-    # Menampilkan informasi awal jika belum ada analisis
-    st.markdown('<div class="info-box">', unsafe_allow_html=True)
-    st.markdown("""
-    ## 👋 Selamat Datang di Aplikasi Analisis Clustering Mpox
-    
-    Aplikasi ini memungkinkan Anda untuk melakukan analisis clustering pada data kasus mpox per negara dengan berbagai parameter yang dapat disesuaikan.
-    
-    ### 🚀 Cara Menggunakan:
-    1. **Pastikan dataset tersedia** - File "mpox cases by country as of 30 June 2024.csv" harus ada di direktori yang sama
-    2. **Atur parameter** di sidebar sesuai kebutuhan analisis Anda
-    3. **Klik tombol "Jalankan Analisis"** untuk memulai clustering
-    4. **Eksplorasi hasil** melalui berbagai tab visualisasi yang tersedia
-    
-    ### 🔧 Fitur Utama:
-    - **PCA (Principal Component Analysis)** untuk reduksi dimensi
-    - **K-Means Clustering** dengan optimasi otomatis atau manual
-    - **Visualisasi interaktif** menggunakan Plotly
-    - **Analisis profil cluster** yang mendalam
-    - **Export hasil** dalam format CSV
-    
-    ### 📊 Metrik Evaluasi:
-    - **Elbow Method** untuk menentukan jumlah cluster optimal
-    - **Silhouette Score** untuk mengukur kualitas clustering
-    - **Distribusi cluster** berdasarkan wilayah WHO
-    
-    Gunakan panel kontrol di sidebar untuk memulai analisis!
-    """)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Menampilkan preview data jika tersedia
-    if df is not None:
-        st.markdown("### 👀 Preview Dataset")
-        st.dataframe(df.head(), use_container_width=True)
-        
-        # Informasi kolom
-        st.markdown("### 📋 Informasi Kolom Dataset")
-        col_info = pd.DataFrame({
-            'Kolom': df.columns,
-            'Tipe Data': df.dtypes,
-            'Jumlah Non-Null': df.count(),
-            'Jumlah Null': df.isnull().sum()
-        })
-        st.dataframe(col_info, use_container_width=True)
+    st.info("Silakan unggah dataset dan klik 'Jalankan Analisis' di sidebar untuk memulai.")
+
+
